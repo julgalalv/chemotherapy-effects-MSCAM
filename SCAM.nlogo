@@ -74,9 +74,40 @@ end
 ;;; ============= 1 PROLIFERATIVE CELLS ===============
 
 to rules-PC
-
+  ask patches with [state = 1]
+  [
+    if-else divide? p_0 r [divide-in-W_p]         ; Priliferate in neighbourhood W_p if possible if it can divide with probability P_div(p_0,r)
+      [set age age + 1]                           ; Else its age increases
+    if age > limit or r < R_p [create-QC]         ; If the age has reched the limit or the cell is in QC zone, it turns to QC
+  ]
 end
 
+to divide-in-W_p
+  let divided false                                                 ; holder to track if PC has devided or not after the search.
+  ; searches for HCs starting with those closest to it
+  ; and then those farther away.
+  foreach (range 1 (max list 2 W_p))                                ; search radius. I introduced max(2,W_p) to let the first PC proliferate.
+  [x ->
+    ;TODO: change in-radius for Moore-neighbourhood
+    let W_p-neighbors neighbors in-radius x with [state = 0]        ; list of HC neighbours in radius x
+    ; If exists at least 1 HC in neighbourhood
+    ; it proliferates and invades HC
+    if count W_p-neighbors > 0 [
+      set divided true
+      create-PC
+      ask one-of W_p-neighbors [create-PC]
+    ]
+    ; If not devided age increases
+    if not divided [set age age + 1]
+  ]
+end
+
+; Check P_div and set if it can devide or not
+to-report divide? [p radius]
+  report random-float 1 <= P_div p radius
+end
+
+; Division probability fromula of a PC
 to-report P_div [ p radius ]
   report p * ( 1 - radius / R_max )
 end
@@ -107,6 +138,8 @@ end
 to create-PC
   set state 1
   set tumor-cell? true
+  set age 0
+  set limit random-init 1 10 ; random int between 1 and 10. TODO: Talk with the team about this values
   set pcolor red
 end
 
@@ -119,6 +152,11 @@ to create-NC
   set state 3
   set tumor-cell? true
   set pcolor grey
+end
+
+; Returns a random number between m and m + s - 1
+to-report random-init [m s]
+ report m + random s
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
@@ -228,7 +266,7 @@ p_0
 p_0
 0
 1
-0.87
+0.7
 0.01
 1
 NIL
@@ -243,7 +281,7 @@ a_p
 a_p
 0
 0.99
-0.4
+0.6
 0.01
 1
 NIL
@@ -258,7 +296,7 @@ a_q
 a_q
 0
 1 - a_p
-0.0
+0.4
 0.01
 1
 NIL
@@ -376,7 +414,7 @@ MONITOR
 209
 V (mm^3)
 (4 / 3 * pi * (R_t * unit-conversion) ^ 3)
-17
+2
 1
 11
 
