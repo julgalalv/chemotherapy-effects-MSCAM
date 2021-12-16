@@ -77,8 +77,8 @@ to rules-PC
   ask patches with [state = 1]
   [
     if-else divide? p_0 r [divide-in-W_p]         ; Priliferate in neighbourhood W_p if possible if it can divide with probability P_div(p_0,r)
-      [set age age + 1]                     ; Else its age increases
-    if age > limit or r < R_p [create-QC]  ; If the age has reched the limit or the cell is in QC zone, it turns to QC
+      [set age age + 1]                           ; Else its age increases
+    if age > limit or r < R_p [create-QC]         ; If the age has reched the limit or the cell is in QC zone, it turns to QC
   ]
 end
 
@@ -396,7 +396,7 @@ PLOT
 209
 Volume
 Iterations (5 h)
-Volume (mm^3)
+Volume (cm^3)
 0.0
 10.0
 0.0
@@ -405,15 +405,15 @@ true
 false
 "" ""
 PENS
-"volume" 1.0 0 -16777216 true "" "plot (4 / 3 * pi * (R_t * unit-conversion) ^ 3)"
+"volume" 1.0 0 -16777216 true "" "plot (4 / 3 * pi * (R_t * unit-conversion) ^ 3) / 1000"
 
 MONITOR
 900
 164
 967
 209
-V (mm^3)
-(4 / 3 * pi * (R_t * unit-conversion) ^ 3)
+V (cm^3)
+(4 / 3 * pi * (R_t * unit-conversion) ^ 3) / 1000
 2
 1
 11
