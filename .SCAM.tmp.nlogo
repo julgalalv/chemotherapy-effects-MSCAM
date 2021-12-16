@@ -109,13 +109,14 @@ end
 
 ; Division probability fromula of a PC
 to-report P_div [ p radius ]
-  report p * ( 1 - radius / R_max )
+  report p * ( 1 - radius / (R_max )
 end
 
 ;;; ============ 2 QUIESCENT CELLS ================
 to rules-QC
   ask patches with [state = 2]
-  [ if r >= R_p  [create-PC]       ; QC->PC if is is in PC zone
+  [
+    if r >= R_p  [create-PC]       ; QC->PC if is is in PC zone
     if r <=  R_n [create-NC]       ; QC->NC if it is in NC zone
   ]
 end
@@ -139,7 +140,7 @@ to create-PC
   set state 1
   set tumor-cell? true
   set age 0
-  set limit random-init 1 10 ; random int between 1 and 10. TODO: Talk with the team about thi values
+  set limit random-init 1 10 ; random int between 1 and 10. TODO: Talk with the team about these values
   set pcolor red
 end
 
@@ -296,7 +297,7 @@ a_q
 a_q
 0
 1 - a_p
-0.4
+0.26
 0.01
 1
 NIL

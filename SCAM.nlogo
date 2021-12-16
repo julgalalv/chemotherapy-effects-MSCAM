@@ -115,7 +115,8 @@ end
 ;;; ============ 2 QUIESCENT CELLS ================
 to rules-QC
   ask patches with [state = 2]
-  [ if r >= R_p  [create-PC]       ; QC->PC if is is in PC zone
+  [
+    if r >= R_p  [create-PC]       ; QC->PC if is is in PC zone
     if r <=  R_n [create-NC]       ; QC->NC if it is in NC zone
   ]
 end
@@ -296,7 +297,7 @@ a_q
 a_q
 0
 1 - a_p
-0.4
+0.26
 0.01
 1
 NIL
