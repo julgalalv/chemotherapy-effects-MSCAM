@@ -1,10 +1,10 @@
 ;; ========== INTERNAL GLOBAL VARIABLES =============
 globals[
- R_max
- R_t
- W_p
- R_p
- R_n
+ R_max ;; Maximum radius of tumor
+ R_t ;; Radius of tumor in step t
+ W_p ;; Width of prolific crown
+ R_p ;; Radius of prolific crown
+ R_n ;; Radius of necrotic crown
  unit-conversion ;; unit conversion factor (mm/ud)
 ]
 
@@ -12,8 +12,8 @@ globals[
 patches-own [
   r               ;; float - distance from the center to the lattice
   state           ;; int {0,...,7} - cell state
-  tumor-cell?     ;; bool - if tumor-cell? then PC,QC or NC (is TC)
-  age             ;; int - 0 when PC/US created and age++ with every step
+  tumor-cell?     ;; bool - if tumor-cell? then PC, QC or NC (is TC)
+  age             ;; int - 0 when PC/US created, age++ with every step
   limit           ;; int - U(0,..,5) If age>limit PC->QC / US->(DC or prev-state)
 
 ;; -- Following attributes may be needed for next developments
@@ -31,16 +31,18 @@ to setup
   set-patch-size 2
   let grid-half-size 100                               ;; (ud) - grid size of 200 uds
   resize-world (- grid-half-size) grid-half-size (- grid-half-size) grid-half-size
+
   ;;; set unit conversion factor and R_max
   let real-size 120                                    ;; (mm) - real size of the grid
   set unit-conversion real-size / (grid-half-size * 2) ;; (mm/ud)
   set R_max  38 / unit-conversion                      ;; with 200 uds of grid size, the conversion factor is ~ 0.6mm/ud (see ODD) => R_max = 38 mm ~ (38 / 0.6) uds ~ 64 uds
+
   ;;; set r for every cell and initialize with 1 PC and HCs
   ask patches [
     set r sqrt(pxcor * pxcor + pycor * pycor)
-    create-HC
+    create-HC ;; Every patch begins as a HC
   ]
-  ask patch 0 0 [create-PC]
+  ask patch 0 0 [create-PC] ;; The tumor is born with 1 PC, in the center of the lattice
   reset-ticks
 end
 
