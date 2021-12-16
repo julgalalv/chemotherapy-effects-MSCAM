@@ -76,17 +76,17 @@ end
 to rules-PC
   ask patches with [state = 1]
   [
-    if-else divide? p_0 r [divide-in-W_p]         ; Priliferate in neighbourhood W_p if possible if it can divide with probability P_div(p_0,r)
+    if-else divide? p_0 r [divide-in-W_p]         ; Proliferate in neighbourhood W_p if possible if it can divide with probability P_div(p_0,r)
       [set age age + 1]                           ; Else its age increases
-    if age > limit or r < R_p [create-QC]         ; If the age has reched the limit or the cell is in QC zone, it turns to QC
+    if age > limit or r < R_p [create-QC]         ; If the age has reached the limit or the cell is in QC zone, it turns to QC
   ]
 end
 
 to divide-in-W_p
-  let divided false                                                 ; holder to track if PC has devided or not after the search.
+  let divided false                                                 ; holder to track if PC has divided or not after the search.
   ; searches for HCs starting with those closest to it
   ; and then those farther away.
-  foreach (range 1 (max list 2 W_p))                                ; search radius. I introduced max(2,W_p) to let the first PC proliferate.
+  foreach (range 1 (max list 2 W_p))                                ; I introduced max(2,W_p) to let the first PC proliferate.
   [x ->
     ;TODO: change in-radius for Moore-neighbourhood
     let W_p-neighbors neighbors in-radius x with [state = 0]        ; list of HC neighbours in radius x
@@ -97,7 +97,7 @@ to divide-in-W_p
       create-PC
       ask one-of W_p-neighbors [create-PC]
     ]
-    ; If not devided age increases
+    ; If not divided age increases
     if not divided [set age age + 1]
   ]
 end
@@ -115,8 +115,8 @@ end
 ;;; ============ 2 QUIESCENT CELLS ================
 to rules-QC
   ask patches with [state = 2]
-  [ if r >= R_p  [create-PC]
-    if r <=  R_n [create-NC]
+  [ if r >= R_p  [create-PC]       ; QC->PC if is is in PC zone
+    if r <=  R_n [create-NC]       ; QC->NC if it is in NC zone
   ]
 end
 ;;; ============ 3 NECROTIC CELLS - TODO: DELETE IF USELESS ================
@@ -139,7 +139,7 @@ to create-PC
   set state 1
   set tumor-cell? true
   set age 0
-  set limit random-init 1 10 ; random int between 1 and 10. TODO: Talk with the team about this values
+  set limit random-init 1 10 ; random int between 1 and 10. TODO: Talk with the team about thi values
   set pcolor red
 end
 
