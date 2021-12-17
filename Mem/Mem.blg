@@ -1,0 +1,54 @@
+This is BibTeX, Version 0.99d (TeX Live 2019/Debian)
+Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
+The top-level auxiliary file: Mem.aux
+The style file: plain.bst
+Database file #1: bibliography.bib
+Warning--I didn't find a database entry for "oetiker1995not"
+Warning--I didn't find a database entry for "kottwitz2015latex"
+Warning--I didn't find a database entry for "tikz"
+Warning--I didn't find a database entry for "knuth74"
+Warning--I didn't find a database entry for "knuth92"
+Warning--I didn't find a database entry for "lamport94"
+Warning--I didn't find a database entry for "bibtex"
+You've used 1 entry,
+            2118 wiz_defined-function locations,
+            513 strings with 4319 characters,
+and the built_in function-call counts, 327 in all, are:
+= -- 30
+> -- 13
+< -- 0
++ -- 6
+- -- 4
+* -- 25
+:= -- 61
+add.period$ -- 3
+call.type$ -- 1
+change.case$ -- 5
+chr.to.int$ -- 0
+cite$ -- 1
+duplicate$ -- 11
+empty$ -- 26
+format.name$ -- 4
+if$ -- 65
+int.to.chr$ -- 0
+int.to.str$ -- 1
+missing$ -- 1
+newline$ -- 8
+num.names$ -- 2
+pop$ -- 3
+preamble$ -- 1
+purify$ -- 4
+quote$ -- 0
+skip$ -- 8
+stack$ -- 0
+substring$ -- 21
+swap$ -- 1
+text.length$ -- 0
+text.prefix$ -- 0
+top$ -- 0
+type$ -- 4
+warning$ -- 0
+while$ -- 3
+width$ -- 2
+write$ -- 13
+(There were 7 warnings)
