@@ -80,7 +80,8 @@ to rules-PC
   [
     if-else divide? p_0 r [divide-in-W_p]         ; Proliferate in neighbourhood W_p if possible if it can divide with probability P_div(p_0,r)
       [set age age + 1]                           ; Else its age increases
-    if age > limit or r < R_p [create-QC]         ; If the age has reached the limit or the cell is in QC zone, it turns to QC
+    if age > limit  [create-QC]         ; If the age has reached the limit or the cell is in QC zone, it turns to QC
+;    if age > limit or r < R_p [create-QC]         ; If the age has reached the limit or the cell is in QC zone, it turns to QC
   ]
 end
 
@@ -284,7 +285,7 @@ a_p
 a_p
 0
 0.99
-0.6
+0.41
 0.01
 1
 NIL
@@ -299,7 +300,7 @@ a_q
 a_q
 0
 1 - a_p
-0.26
+0.59
 0.01
 1
 NIL
