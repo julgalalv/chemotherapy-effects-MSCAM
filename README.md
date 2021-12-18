@@ -5,30 +5,20 @@ Overleaf Mem: https://es.overleaf.com/read/cnrydrtxhjvg
 
 ## Proliferation algorithm
 
-First version of proliferation algorithm.
+Proliferation algorithm.
 
-Parameters used in the images:
+Parameters used in the image:
 
 * p_0 = 0.70
 * a_p = 0.60
 * a_q = 0.35
 
-1. After 12 ticks
+![prolif_v2](./images/prolif_v2_1.gif)
 
-![12 ticks](./images/prolif_v1_1.png)
+Parameters used in the image (slower step time):
 
-2. After 25 ticks
+* p_0 = 0.10
+* a_p = 0.60
+* a_q = 0.35
 
-![25 ticks](./images/prolif_v1_2.png)
-
-3. After 45 ticks
-
-![45 ticks](./images/prolif_v1_3.png)
-
-4. After 119 ticks
-
-![119 ticks](./images/prolif_v1_4.png)
-
-5. After 362 ticks
-
-![362 ticks](./images/prolif_v1_5.png)
+![prolif_v2](./images/prolif_v2_2.gif)
