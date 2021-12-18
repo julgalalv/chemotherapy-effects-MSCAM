@@ -80,8 +80,8 @@ to rules-PC
   [
     if-else divide? p_0 r [divide-in-W_p]         ; Proliferate in neighbourhood W_p if possible if it can divide with probability P_div(p_0,r)
       [set age age + 1]                           ; Else its age increases
+    ;; MODIFIACTION: only age makes PC into QC and not R_p
     if age > limit  [create-QC]         ; If the age has reached the limit or the cell is in QC zone, it turns to QC
-;    if age > limit or r < R_p [create-QC]         ; If the age has reached the limit or the cell is in QC zone, it turns to QC
   ]
 end
 
@@ -91,7 +91,6 @@ to divide-in-W_p
   ; and then those farther away.
   foreach (range 1 (max list 2 W_p))                                ; I introduced max(2,W_p) to let the first PC proliferate.
   [x ->
-    ;TODO: change in-radius for Moore-neighbourhood
     let W_p-neighbors neighbors in-radius x with [state = 0]        ; list of HC neighbours in radius x
     ; If exists at least 1 HC in neighbourhood
     ; it proliferates and invades HC
@@ -119,8 +118,13 @@ end
 to rules-QC
   ask patches with [state = 2]
   [
+    ;; MODIFICATION: QC to PC if there is a HC in its neighborhood.
+    ;; avoids no proliferation and empty holes in the tumor if p_0 is too low at the start.
+    if-else count neighbors with [state = 0] > 1 [create-PC]
+    [
     if r >= R_p  [create-PC]       ; QC->PC if is is in PC zone
-    if r <=  R_n [create-NC]       ; QC->NC if it is in NC zone
+    if r <= R_n [create-NC]       ; QC->NC if it is in NC zone
+    ]
   ]
 end
 ;;; ============ 3 NECROTIC CELLS - TODO: DELETE IF USELESS ================
@@ -270,7 +274,7 @@ p_0
 p_0
 0
 1
-0.7
+0.17
 0.01
 1
 NIL
@@ -285,7 +289,7 @@ a_p
 a_p
 0
 0.99
-0.41
+0.54
 0.01
 1
 NIL
@@ -300,7 +304,7 @@ a_q
 a_q
 0
 1 - a_p
-0.59
+0.45
 0.01
 1
 NIL
