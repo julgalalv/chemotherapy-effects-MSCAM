@@ -62,6 +62,7 @@ to go
   ;;; HC rules
   rules-HC
 
+
   tick
 end
 
@@ -122,8 +123,12 @@ to rules-QC
     ;; avoids no proliferation and empty holes in the tumor if p_0 is too low at the start.
     if-else count neighbors with [state = 0] > 1 [create-PC]
     [
-    if r >= R_p  [create-PC]       ; QC->PC if is is in PC zone
-    if r <= R_n [create-NC]       ; QC->NC if it is in NC zone
+      let rango_p R_p / 10
+      let  rango_n R_n / -10
+      let rpa random-init R_p rango_p
+      let rna random-init R_n rango_n
+      if r >= rpa  [create-PC]       ; QC->PC if is is in PC zone
+      if r <= rna [create-NC]       ; QC->NC if it is in NC zone
     ]
   ]
 end
@@ -131,6 +136,17 @@ end
 to rules-NC
 end
 
+;;; ============ 4 NATURAL KILLER CELLS ============
+to rules-NK
+end
+
+to born-NK?
+  let interruptor random-float 1
+  if interruptor <= NK_Concentration
+  [
+    create-NK
+  ]
+end
 ;;; ============ 0 HEALTHY CELLS / EMPTY SPACES ================
 to rules-HC
 
@@ -159,7 +175,12 @@ end
 to create-NC
   set state 3
   set tumor-cell? true
-  set pcolor grey
+  set pcolor 11
+end
+to create-NK
+  set state 4
+  set tumor-cell? false
+  set pcolor blue
 end
 
 ; Returns a random number between m and m + s - 1
@@ -274,7 +295,7 @@ p_0
 p_0
 0
 1
-0.17
+0.7
 0.01
 1
 NIL
@@ -289,7 +310,7 @@ a_p
 a_p
 0
 0.99
-0.54
+0.6
 0.01
 1
 NIL
@@ -304,7 +325,7 @@ a_q
 a_q
 0
 1 - a_p
-0.45
+0.35
 0.01
 1
 NIL
@@ -425,6 +446,21 @@ V (cm^3)
 2
 1
 11
+
+SLIDER
+10
+172
+182
+205
+NK_Concentration
+NK_Concentration
+0
+0.1
+0.1
+0.005
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
