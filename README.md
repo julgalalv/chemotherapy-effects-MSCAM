@@ -5,20 +5,10 @@ Overleaf Mem: https://es.overleaf.com/read/cnrydrtxhjvg
 
 ## Proliferation algorithm
 
-Proliferation algorithm.
-
 Parameters used in the image:
 
 * p_0 = 0.70
 * a_p = 0.60
 * a_q = 0.35
 
-![prolif_v2](./images/prolif_v2_1.gif)
-
-Parameters used in the image (slower step time):
-
-* p_0 = 0.10
-* a_p = 0.60
-* a_q = 0.35
-
-![prolif_v2](./images/prolif_v2_2.gif)
+![prolif_v3](./images/prolif_v3_1.gif)
