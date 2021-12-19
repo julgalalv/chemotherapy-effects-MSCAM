@@ -123,7 +123,8 @@ to rules-QC
     ;; MODIFICATION: QC to PC if there is a HC in its neighborhood.
     ;; avoids no proliferation and empty holes in the tumor if p_0 is too low at the start.
     if-else count neighbors with [state = 0] > 1 [create-PC]
-    [
+    [;;With these changes I have achieved a more realistic effect of the quiescent crown
+      ;;since randomness is introduced in the R_q and R_n parameters
       let rpa random-init R_p (R_p * 0.1)      ; uniform random number between R_p and R_p + 10%R_p
       let rna random-init R_n (- R_n * 0.1)    ; uniform random number between R_n and R_n - 10%R_n and R_n
       if r >= rpa  [create-PC]                 ; QC->PC if is is in PC zone
@@ -133,6 +134,18 @@ to rules-QC
 end
 ;;; ============ 3 NECROTIC CELLS - TODO: DELETE IF USELESS ================
 to rules-NC
+end
+
+;;; ============ 4 NATURAL KILLER CELLS ============
+to rules-NK
+end
+
+to born-NK? ;This serves to create NK cells based on the cell concentration
+  let interruptor random-float 1
+  if interruptor <= NK_Concentration
+  [
+    create-NK
+  ]
 end
 
 ;;; ============ 0 HEALTHY CELLS / EMPTY SPACES ================
@@ -165,6 +178,11 @@ to create-NC
   set state 3
   set tumor-cell? true
   set pcolor 11
+end
+to create-NK
+  set state 4
+  set tumor-cell? false
+  set pcolor blue
 end
 
 
@@ -431,6 +449,21 @@ V (cm^3)
 2
 1
 11
+
+SLIDER
+12
+176
+184
+209
+NK_Concentration
+NK_Concentration
+0
+0.1
+0.02
+0.005
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
