@@ -6,6 +6,7 @@ globals[
  R_p ;; Radius of prolific crown
  R_n ;; Radius of necrotic crown
  unit-conversion ;; unit conversion factor (mm/ud)
+ IS?
 ]
 
 ;; ========== CUSTOM PATCHES ==============
@@ -27,6 +28,9 @@ patches-own [
 ;; ========== INITIALIZATION AND GO ============
 to setup
   clear-all
+
+  set IS? false ;The immune system is off at the begging
+
   ;;; set world size
   set-patch-size 2
   let grid-half-size 100                               ;; (ud) - grid size of 200 uds
@@ -139,7 +143,7 @@ to rules-QC
       let rpa random-init R_p (R_p * 0.1)      ; uniform random number between R_p and R_p + 10%R_p
       let rna random-init R_n (- R_n * 0.1)    ; uniform random number between R_n and R_n - 10%R_n and R_n
       if r >= rpa  [create-PC]                 ; QC->PC if is is in PC zone
-      if r <=  rna [create-NC]                 ; QC->NC if it is in NC zone
+      if r <= rna [create-NC]                  ; QC->NC if it is in NC zone
     ]
   ]
 end
@@ -149,7 +153,27 @@ end
 
 ;;; ============ 4 NATURAL KILLER CELLS ============
 to rules-NK
+    if IS? = false
+  [
+    if R_t >= R_max / 10 ;condition to turn on the immune system
+    [
+      ask patches with [state = 0] ;natural killer appear in HC zone
+      [
+        born-NK?
+        if count patches with [state = 4] > NK_concentration * 10000 ;NK concentration meter
+        [
+          set IS? true ; turn on the immune system
+        ]
+    ]
+    ]
+  ]
+  if IS? = true ;
+  [
+    ask patches with [state = 4]
+    []
+  ]
 end
+
 
 to born-NK? ;This serves to create NK cells based on the cell concentration
   let interruptor random-float 1
@@ -159,8 +183,6 @@ to born-NK? ;This serves to create NK cells based on the cell concentration
   ]
 end
 
-<<<<<<< Updated upstream
-=======
 ;;; ============ 5 CYTOTOXIC T LYMPHOCYTE ============
 to rules-CTL
 end
@@ -172,7 +194,6 @@ end
 to rules-DC
 end
 
->>>>>>> Stashed changes
 ;;; ============ 0 HEALTHY CELLS / EMPTY SPACES ================
 to rules-HC
 end
@@ -209,24 +230,22 @@ to create-NK
   set tumor-cell? false
   set pcolor blue
 end
-<<<<<<< Updated upstream
-=======
 to create-CTL
   set state 5
   set tumor-cell? false
-  set pcolor yellow
+  set pcolor lime
 end
 to create-US
   set state 6
   set tumor-cell? false
-  set pcolor green
+  set pcolor yellow
 end
 to create-DC
   set state 7
   set tumor-cell? false
   set pcolor grey
+
 end
->>>>>>> Stashed changes
 
 
 ; Returns a random number between m and m + s - 1
@@ -502,7 +521,7 @@ NK_Concentration
 NK_Concentration
 0
 0.1
-0.02
+0.1
 0.005
 1
 NIL
