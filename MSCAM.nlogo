@@ -15,12 +15,12 @@ patches-own [
   tumor-cell?     ;; bool - if tumor-cell? then PC, QC or NC (is TC)
   age             ;; int - 0 when PC/US created, age++ with every step
   limit           ;; int - U(0,..,5) If age>limit PC->QC / US->(DC or prev-state)
+  previous-state  ;; int {0,...,7} - previous state of an US
+  NK-signal       ;; float (0,1) - triggered in NK-PC conflict. diffusable
 
 ;; -- Following attributes may be needed for next developments
 ;;  PC-signal       ;; float (0,1) - triggered in PC division. diffusable
-;;  NK-signal       ;; float (0,1) - triggered in NK-PC conflict. diffusable
 ;;  immune-res      ;; float (0,1) - initialized in 0. Increments slowly for each TC if survives CTL-TC conflict
-;;  previous-state  ;; int {0,...,7} - previous state of an US
 ;;  drug-res?       ;; bool - if drug-res? then DRC else DSC
 ]
 
@@ -62,6 +62,17 @@ to go
   ;;; HC rules
   rules-HC
 
+  ;;; Natural Killers rules
+  rules-NK
+
+  ;;; CTL rules
+  rules-CTL
+
+  ;;; Unknown State rules
+  rules-US
+
+  ;;; Death cells rules
+  rules-DC
 
   tick
 end
@@ -148,6 +159,20 @@ to born-NK? ;This serves to create NK cells based on the cell concentration
   ]
 end
 
+<<<<<<< Updated upstream
+=======
+;;; ============ 5 CYTOTOXIC T LYMPHOCYTE ============
+to rules-CTL
+end
+
+;;; ============ 6 UNKNOWN STATE CELLS ============
+to rules-US
+end
+;;; ============ 7 DEATH CELLS ============
+to rules-DC
+end
+
+>>>>>>> Stashed changes
 ;;; ============ 0 HEALTHY CELLS / EMPTY SPACES ================
 to rules-HC
 end
@@ -184,6 +209,24 @@ to create-NK
   set tumor-cell? false
   set pcolor blue
 end
+<<<<<<< Updated upstream
+=======
+to create-CTL
+  set state 5
+  set tumor-cell? false
+  set pcolor yellow
+end
+to create-US
+  set state 6
+  set tumor-cell? false
+  set pcolor green
+end
+to create-DC
+  set state 7
+  set tumor-cell? false
+  set pcolor grey
+end
+>>>>>>> Stashed changes
 
 
 ; Returns a random number between m and m + s - 1
