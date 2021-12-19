@@ -79,10 +79,11 @@ end
 to rules-PC
   ask patches with [state = 1]
   [
-    if-else divide? p_0 r [divide-in-W_p]         ; Proliferate in neighbourhood W_p if possible if it can divide with probability P_div(p_0,r)
+    if-else divide? p_0 r
+      [divide-in-W_p]                             ; Proliferate in neighbourhood W_p if possible if it can divide with probability P_div(p_0,r)
       [set age age + 1]                           ; Else its age increases
-    ;; MODIFIACTION: only age makes PC into QC and not R_p
-    if age > limit  [create-QC]         ; If the age has reached the limit or the cell is in QC zone, it turns to QC
+    let rpa random-init R_p (- R_p * 0.1)         ; uniform random number between R_p and R_p - 10%R_p and R_p
+    if age > limit or r < rpa  [create-QC]        ; If the age has reached the limit or the cell is in QC zone, it turns to QC
   ]
 end
 
@@ -123,12 +124,10 @@ to rules-QC
     ;; avoids no proliferation and empty holes in the tumor if p_0 is too low at the start.
     if-else count neighbors with [state = 0] > 1 [create-PC]
     [
-      let rango_p R_p / 10
-      let  rango_n R_n / -10
-      let rpa random-init R_p rango_p
-      let rna random-init R_n rango_n
-      if r >= rpa  [create-PC]       ; QC->PC if is is in PC zone
-      if r <= rna [create-NC]       ; QC->NC if it is in NC zone
+      let rpa random-init R_p (R_p * 0.1)      ; uniform random number between R_p and R_p + 10%R_p
+      let rna random-init R_n (- R_n * 0.1)    ; uniform random number between R_n and R_n - 10%R_n and R_n
+      if r >= rpa  [create-PC]                 ; QC->PC if is is in PC zone
+      if r <=  rna [create-NC]                 ; QC->NC if it is in NC zone
     ]
   ]
 end
@@ -136,21 +135,10 @@ end
 to rules-NC
 end
 
-;;; ============ 4 NATURAL KILLER CELLS ============
-to rules-NK
-end
-
-to born-NK?
-  let interruptor random-float 1
-  if interruptor <= NK_Concentration
-  [
-    create-NK
-  ]
-end
 ;;; ============ 0 HEALTHY CELLS / EMPTY SPACES ================
 to rules-HC
-
 end
+
 ;;; ============== UTILS ==================
 
 to create-HC
@@ -172,16 +160,13 @@ to create-QC
   set tumor-cell? true
   set pcolor pink
 end
+
 to create-NC
   set state 3
   set tumor-cell? true
   set pcolor 11
 end
-to create-NK
-  set state 4
-  set tumor-cell? false
-  set pcolor blue
-end
+
 
 ; Returns a random number between m and m + s - 1
 to-report random-init [m s]
@@ -446,21 +431,6 @@ V (cm^3)
 2
 1
 11
-
-SLIDER
-10
-172
-182
-205
-NK_Concentration
-NK_Concentration
-0
-0.1
-0.1
-0.005
-1
-NIL
-HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
