@@ -5,8 +5,8 @@ globals[
  W_p ;; Width of prolific crown
  R_p ;; Radius of prolific crown
  R_n ;; Radius of necrotic crown
- unit-conversion ;; unit conversion factor (mm/ud)
- IS?
+ unit-conversion ;; Unit conversion factor (mm/ud)
+ IS? ;; Is the Immune System active?
 ]
 
 ;; ========== CUSTOM PATCHES ==============
@@ -29,7 +29,7 @@ patches-own [
 to setup
   clear-all
 
-  set IS? false ;The immune system is off at the begging
+  set IS? false ;The immune system is off at the beggining
 
   ;;; set world size
   set-patch-size 2
@@ -54,28 +54,28 @@ to go
   ;;; update global variables
   update-globals
 
-  ;;; proliferative rules
+  ;;; proliferative cells (PC) rules
   rules-PC
 
-  ;;; quiescent rules
+  ;;; quiescent cells (QC) rules
   rules-QC
 
-  ;;; necrotic rules - TODO: DELETE IF USELESS
+  ;;; necrotic cells (NC) rules - TODO: DELETE IF USELESS
   rules-NC
 
-  ;;; HC rules
+  ;;; healthy cells (HC) rules
   rules-HC
 
-  ;;; Natural Killers rules
+  ;;; natural killers (NK) rules
   rules-NK
 
-  ;;; CTL rules
+  ;;; cytotoxic T lymphocytes (CTL) rules
   rules-CTL
 
-  ;;; Unknown State rules
+  ;;; unstable state (US) rules
   rules-US
 
-  ;;; Death cells rules
+  ;;; dead cells (DC) rules
   rules-DC
 
   tick
@@ -138,8 +138,8 @@ to rules-QC
     ;; MODIFICATION: QC to PC if there is a HC in its neighborhood.
     ;; avoids no proliferation and empty holes in the tumor if p_0 is too low at the start.
     if-else count neighbors with [state = 0] > 1 [create-PC]
-    [;;With these changes I have achieved a more realistic effect of the quiescent crown
-      ;;since randomness is introduced in the R_q and R_n parameters
+    [;; With these changes I have achieved a more realistic effect of the quiescent crown
+      ;; since randomness is introduced in the R_q and R_n parameters
       let rpa random-init R_p (R_p * 0.1)      ; uniform random number between R_p and R_p + 10%R_p
       let rna random-init R_n (- R_n * 0.1)    ; uniform random number between R_n and R_n - 10%R_n and R_n
       if r >= rpa  [create-PC]                 ; QC->PC if is is in PC zone
@@ -153,45 +153,84 @@ end
 
 ;;; ============ 4 NATURAL KILLER CELLS ============
 to rules-NK
-    if IS? = false
+  ; Modified from IS? = false, IS? = true TODO: DELETE COMMENT.
+  ifelse (IS?)
+
+  ; With IS
   [
-    if R_t >= R_max / 10 ;condition to turn on the immune system
-    [
-      ask patches with [state = 0] ;natural killer appear in HC zone
+    ; Constants through the process (we don't want to compute them for each cell) TODO: DELETE
+    let p-bNK max list 0 NK_Concentration - (count patches with [state = 4]) / (count patches)
+
+    ;; Actions made by NK
+     ask patches with [state = 4] [
+      ;; TODO: The IC will die with probability pdI and turn into NoC or ES, i.e. the PC will survive.
+
+      ;; The IC will continue walking randomly when no PC in their neighbourhood is found ;; TODO: Which neighbourhood?
+      ifelse (any? neighbors with [tumor-cell?])
+      [      ;; NK-TC conflict
+             ; 1. Signal is increased
+             ; 2. CTL generation
+             ; 3. TC dies (unlikely) (TC → US → DC)
+             ; 4. NK dies, new NK are recruited
+      ]
+      [ ; Random walk as there are no TC near
+        ask one-of neighbors with [state = 0] [create-NK]
+        create-HC
+      ]
+    ]
+
+     ;; Stimulation of the immune system (creation of new NK)
+      ask patches with [state = 0] ; NK substitutes HC
       [
-        born-NK?
-        if count patches with [state = 4] > NK_concentration * 10000 ;NK concentration meter
-        [
-          set IS? true ; turn on the immune system
-        ]
-    ]
-    ]
-  ]
-  if IS? = true ;
-  [
-    ask patches with [state = 4]
-    []
-  ]
-end
+        if (random-float 1 <= p-bNK) [create-NK] ; NK cells are created according to the p_{bNK} probability
+      ]
 
+      ;; TODO: DELETE IF USELESS
+      ; let alpha 10 ^ (-3) ; TODO: Check. [42]
+      ; let nIC count patches with [state = 4 OR state = 5]
+      ; let growth-rate-recruitment p_0 * (nIC + count patches with [state = 1]) / (alpha + (count patches with [tumor-cell?])) ; RO * (Nic + Npc) / (ALPHA + NT)
+      ; ask n-of growth-rate-recruitment patches with [state = 0] [create-NK] ; TODO: Check
 
-to born-NK? ;This serves to create NK cells based on the cell concentration
-  let interruptor random-float 1
-  if interruptor <= NK_Concentration
+      ;; TODO: NK-CTL substitution
+      ; When a NK disappears, a new CTL is born, but will be activated some time afterwards. NK may be substituted. ;; TODO: This happens, even if the NK died?
+  ]
+
+  ; Without IS
   [
-    create-NK
+
+    if R_t >= R_max / 10 ; condition to turn on the immune system
+    [
+      ask patches with [state = 0] ; natural killer substitutes HC
+      [
+        ; NK cells are firstly created according to the NK_concentration parameter
+        if (random-float 1 <= NK_concentration) [create-NK] ; A NK is born
+    ]
+
+  ; Update IS? to turn on the immune system
+      if (count patches with [state = 4] > NK_concentration * 10000) ; NK concentration meter
+      [
+        set IS? true
+      ]
+    ]
   ]
 end
 
 ;;; ============ 5 CYTOTOXIC T LYMPHOCYTE ============
 to rules-CTL
+  ;; CTL-TC conflict
 end
 
 ;;; ============ 6 UNKNOWN STATE CELLS ============
 to rules-US
 end
+
 ;;; ============ 7 DEATH CELLS ============
 to rules-DC
+  ; Tissue repair
+  ask patches with [state = 7]
+  ; TODO: Which neighbor? Moore with radius 2? Moore with radius 1? From the paper: "We assumed that the state of DC can change into ES if it is surrounded by more than five NoCs."
+  ; [if (count neighbors with [state = 0] > 5) [set state 0]] ; Option a) TODO: DELETE
+  [if (count neighbors in-radius 2 with [state = 0] > 5) [set state 0]] ; Option b) TODO: DELETE
 end
 
 ;;; ============ 0 HEALTHY CELLS / EMPTY SPACES ================
@@ -225,11 +264,13 @@ to create-NC
   set tumor-cell? true
   set pcolor 11
 end
+
 to create-NK
   set state 4
   set tumor-cell? false
   set pcolor blue
 end
+
 to create-CTL
   set state 5
   set tumor-cell? false
@@ -513,9 +554,9 @@ V (cm^3)
 11
 
 SLIDER
-12
+11
 176
-184
+183
 209
 NK_Concentration
 NK_Concentration
