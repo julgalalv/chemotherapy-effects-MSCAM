@@ -1,12 +1,30 @@
+;; ========== EXTENSIONS =============
+extensions [ rnd ]
+
 ;; ========== INTERNAL GLOBAL VARIABLES =============
 globals[
+ ;; ---------------
+ ;; General globals
+ ;; ---------------
+
+ num-patches
+ unit-conversion ;; unit conversion factor (mm/ud)
+
+ ;; -----------------------------
+ ;; Proliferation related globals
+ ;; -----------------------------
  R_max ;; Maximum radius of tumor
  R_t ;; Radius of tumor in step t
  W_p ;; Width of prolific crown
  R_p ;; Radius of prolific crown
  R_n ;; Radius of necrotic crown
- unit-conversion ;; Unit conversion factor (mm/ud)
- IS? ;; Is the Immune System active?
+
+ ;; ------------------
+ ;; IS related globals
+ ;; ------------------
+ IS-active? ;; Int that indicates the times to activate IS
+ AIS-active? ;; Int that indicates the times to activate AIS (Adaptative Immune-System)
+
 ]
 
 ;; ========== CUSTOM PATCHES ==============
@@ -16,20 +34,27 @@ patches-own [
   tumor-cell?     ;; bool - if tumor-cell? then PC, QC or NC (is TC)
   age             ;; int - 0 when PC/US created, age++ with every step
   limit           ;; int - U(0,..,5) If age>limit PC->QC / US->(DC or prev-state)
-  previous-state  ;; int {0,...,7} - previous state of an US
-  NK-signal       ;; float (0,1) - triggered in NK-PC conflict. diffusable
 
-;; -- Following attributes may be needed for next developments
-;;  PC-signal       ;; float (0,1) - triggered in PC division. diffusable
-;;  immune-res      ;; float (0,1) - initialized in 0. Increments slowly for each TC if survives CTL-TC conflict
-;;  drug-res?       ;; bool - if drug-res? then DRC else DSC
+  ;; Immune specific attributes
+  antigen         ;; float (0,1) - initialized in 0. Indicates the strength of the signal at each patch.
+  immune-res      ;; float (0,1) - initialized in 0. Increments slowly for each TC if survives I-TC conflict
+  immune-dam      ;; float (0,1) - initialized in 0. Increments slowly for each TC if survives I-TC conflict
+  fights          ;; int - initialized in 0. Indicates the number of fights in which a CTL has intervened
+
+
+  previous-state  ;; int {0,...,7} - previous state of an US
+  ;; -- Following attributes may be needed for next developments
+  ;;  drug-res?       ;; bool - if drug-res? then DRC else DSC
 ]
 
 ;; ========== INITIALIZATION AND GO ============
 to setup
   clear-all
+  ;; General settings
+  ;; ----------------
 
-  set IS? false ;The immune system is off at the beggining
+  ;; set num-patches
+  set num-patches (count patches)
 
   ;;; set world size
   set-patch-size 2
@@ -39,6 +64,9 @@ to setup
   ;;; set unit conversion factor and R_max
   let real-size 120                                    ;; (mm) - real size of the grid
   set unit-conversion real-size / (grid-half-size * 2) ;; (mm/ud)
+
+  ;; Proliferation settings
+  ;; ----------------------
   set R_max  38 / unit-conversion                      ;; with 200 uds of grid size, the conversion factor is ~ 0.6mm/ud (see ODD) => R_max = 38 mm ~ (38 / 0.6) uds ~ 64 uds
 
   ;;; set r for every cell and initialize with 1 PC and HCs
@@ -46,7 +74,18 @@ to setup
     set r sqrt(pxcor * pxcor + pycor * pycor)
     create-HC ;; Every patch begins as a HC
   ]
-  ask patch 0 0 [create-PC] ;; The tumor is born with 1 PC, in the center of the lattice
+  ask patch 0 0 [create-PC[0]] ;; The tumor is born with 1 PC, in the center of the lattice
+
+  ;; IS settings
+
+  ifelse (activate-IS-at?) [
+    set IS-active? IS-act-time
+  ][
+    set IS-active? (-1)
+  ]
+
+   set AIS-active? (-1)
+
   reset-ticks
 end
 
@@ -54,39 +93,53 @@ to go
   ;;; update global variables
   update-globals
 
-  ;;; proliferative cells (PC) rules
+  ;;; proliferative rules
   rules-PC
 
-  ;;; quiescent cells (QC) rules
+  ;;; quiescent rules
   rules-QC
 
-  ;;; necrotic cells (NC) rules - TODO: DELETE IF USELESS
+  ;;; necrotic rules - TODO: DELETE IF USELESS
   rules-NC
 
-  ;;; healthy cells (HC) rules
+  ;;; HC rules
   rules-HC
 
-  ;;; natural killers (NK) rules
-  rules-NK
-
-  ;;; cytotoxic T lymphocytes (CTL) rules
+  ;;; CTL rules
   rules-CTL
 
-  ;;; unstable state (US) rules
+  ;;; NK rules (NOT COMPLETED)
+  rules-NK
+
+  ;;; US rules
   rules-US
 
-  ;;; dead cells (DC) rules
+  ;;; DC rules
   rules-DC
 
+  ;;; antigen diffusion and evaporation
+  adjust-antigen
   tick
 end
 
 ;;; ============= GLOBALS UPDATES ==================
 to update-globals
-    set R_t mean [r] of patches with [count neighbors with [state = 0] > 0 and tumor-cell?]
-    set W_p a_p * R_t ^ ( 2 / 3 )
-    set R_p R_t - W_p
-    set R_n R_t - ((a_p + a_q) * R_t ^ ( 2 / 3 ))
+  ;; Proliferation globals
+  set R_t mean [r] of patches with [count neighbors with [tumor-cell? = false] > 0 and tumor-cell?]
+  set W_p a_p * R_t ^ ( 2 / 3 )
+  set R_p R_t - W_p
+  set R_n R_t - ((a_p + a_q) * R_t ^ ( 2 / 3 ))
+
+  ;; IS globals
+  ifelse (IS-active? = 0) [
+    check-IS
+  ][
+    set IS-active? (max (list -1 (IS-active? - 1)))
+  ]
+end
+
+;;; ============ 0 HEALTHY CELLS / EMPTY SPACES ================
+to rules-HC
 end
 
 ;;; ============= 1 PROLIFERATIVE CELLS ===============
@@ -110,18 +163,26 @@ to divide-in-W_p
   [x ->
     let W_p-neighbors neighbors in-radius x with [state = 0]        ; list of HC neighbours in radius x
     ; If exists at least 1 HC in neighbourhood
-    ; it proliferates and invades HC
     if count W_p-neighbors > 0 [
+      ; it proliferates and invades HC
       set divided true
-      create-PC
-      ask one-of W_p-neighbors [create-PC]
+      create-PC immune-res
+
+      ; it liberates an small amount of antigen
+      ask one-of W_p-neighbors [
+        create-PC (immune-res)
+         set antigen min (list 1 (antigen + q_antigen))
+        ask neighbors [
+          set antigen min (list 1 (antigen + q_antigen))
+        ]
+      ]
     ]
     ; If not divided age increases
     if not divided [set age age + 1]
   ]
 end
 
-; Check P_div and set if it can devide or not
+; Check P_div and set if it can divide or not
 to-report divide? [p radius]
   report random-float 1 <= P_div p radius
 end
@@ -137,13 +198,12 @@ to rules-QC
   [
     ;; MODIFICATION: QC to PC if there is a HC in its neighborhood.
     ;; avoids no proliferation and empty holes in the tumor if p_0 is too low at the start.
-    if-else count neighbors with [state = 0] > 1 [create-PC]
-    [;; With these changes I have achieved a more realistic effect of the quiescent crown
-      ;; since randomness is introduced in the R_q and R_n parameters
+    if-else count neighbors with [state = 0] > 1 [create-PC immune-res]
+    [
       let rpa random-init R_p (R_p * 0.1)      ; uniform random number between R_p and R_p + 10%R_p
       let rna random-init R_n (- R_n * 0.1)    ; uniform random number between R_n and R_n - 10%R_n and R_n
-      if r >= rpa  [create-PC]                 ; QC->PC if is is in PC zone
-      if r <= rna [create-NC]                  ; QC->NC if it is in NC zone
+      if r >= rpa  [create-PC immune-res]      ; QC->PC if is is in PC zone
+      if r <=  rna [create-NC]                 ; QC->NC if it is in NC zone
     ]
   ]
 end
@@ -151,154 +211,360 @@ end
 to rules-NC
 end
 
-;;; ============ 4 NATURAL KILLER CELLS ============
+;;; ============ 4 NK CELLS RULES ================
 to rules-NK
-  ; Modified from IS? = false, IS? = true TODO: DELETE COMMENT.
-  ifelse (IS?)
-
-  ; With IS
-  [
-    ; Constants through the process (we don't want to compute them for each cell) TODO: DELETE
-    let p-bNK max list 0 NK_Concentration - (count patches with [state = 4]) / (count patches)
-
-    ;; Actions made by NK
-     ask patches with [state = 4] [
-      ;; TODO: The IC will die with probability pdI and turn into NoC or ES, i.e. the PC will survive.
-
-      ;; The IC will continue walking randomly when no PC in their neighbourhood is found ;; TODO: Which neighbourhood?
-      ifelse (any? neighbors with [tumor-cell?])
-      [      ;; NK-TC conflict
-             ; 1. Signal is increased
-             ; 2. CTL generation
-             ; 3. TC dies (unlikely) (TC → US → DC)
-             ; 4. NK dies, new NK are recruited
-      ]
-      [ ; Random walk as there are no TC near
-        ask one-of neighbors with [state = 0] [create-NK]
-        create-HC
-      ]
-    ]
-
-     ;; Stimulation of the immune system (creation of new NK)
-      ask patches with [state = 0] ; NK substitutes HC
-      [
-        if (random-float 1 <= p-bNK) [create-NK] ; NK cells are created according to the p_{bNK} probability
-      ]
-
-      ;; TODO: DELETE IF USELESS
-      ; let alpha 10 ^ (-3) ; TODO: Check. [42]
-      ; let nIC count patches with [state = 4 OR state = 5]
-      ; let growth-rate-recruitment p_0 * (nIC + count patches with [state = 1]) / (alpha + (count patches with [tumor-cell?])) ; RO * (Nic + Npc) / (ALPHA + NT)
-      ; ask n-of growth-rate-recruitment patches with [state = 0] [create-NK] ; TODO: Check
-
-      ;; TODO: NK-CTL substitution
-      ; When a NK disappears, a new CTL is born, but will be activated some time afterwards. NK may be substituted. ;; TODO: This happens, even if the NK died?
+  ask patches with [ state = 4 ] [
+    NK-action
   ]
+end
 
-  ; Without IS
-  [
+to NK-action
+  ;; revise if tumour
+  let TCneigh (neighbors with [tumor-cell? = true])
+  ifelse any? TCneigh [
+    ; If tumour, then:
 
-    if R_t >= R_max / 10 ; condition to turn on the immune system
-    [
-      ask patches with [state = 0] ; natural killer substitutes HC
-      [
-        ; NK cells are firstly created according to the NK_concentration parameter
-        if (random-float 1 <= NK_concentration) [create-NK] ; A NK is born
+    ; Liberate antigen
+    set antigen  min (list 1 (antigen + 6 * q_antigen))
+    ask patches in-radius 10 [
+      set antigen min (list 1 (antigen + q_antigen))
+    ]
+    ask patches in-radius 8 [
+      set antigen min (list 1 (antigen + 2 * q_antigen))
+    ]
+    ask patches in-radius 6 [
+      set antigen min (list 1 (antigen + 3 * q_antigen))
+    ]
+    ask patches in-radius 4 [
+      set antigen min (list 1 (antigen + 4 * q_antigen))
+    ]
+    ask patches in-radius 2 [
+      set antigen min (list 1 (antigen + 5 * q_antigen))
     ]
 
-  ; Update IS? to turn on the immune system
-      if (count patches with [state = 4] > NK_concentration * 10000) ; NK concentration meter
+    ;; Activation of AIS
+    if (AIS-active? < 0) [ set AIS-active? 15 ] ;; TODO: Discuss this value
+
+    ;; conflict with TC
+    NK-confict-with-TC (one-of TCneigh)
+
+    ;; NK dissapears and CTL is created
+    create-CTL
+
+    ;; NK recruits other NKs
+
+    ; A recruitment of more NK cells are performed
+      ask neighbors with [state = 0 or state = 4]
       [
-        set IS? true
+        let p_rec (exp (- ((IS-recruitment-factor) * (1 + (count neighbors with [tumor-cell? = true]))) ^ (-2) ))
+        recruit-NK p_rec
+      ]
+
+  ][
+    ;; check probabilistic survival
+    ifelse ( (random-float 1) < ( exp ( -1 / ( lifetime_i-factor * (age + 1) ) ) ) ) [
+
+      ;; if NK does not survive then it turns to HC state
+      create-HC
+
+
+    ][
+      ; probabilistic random movement of NK
+      let my-age (age + 1)
+      let transitable-ng (neighbors with [state = 0])
+      ifelse any? transitable-ng [
+        ask (rnd:weighted-one-of transitable-ng [antigen]) [ ;; roulette wheel selection
+          set state 4
+          set pcolor sky
+          set age my-age
+        ]
+        set state 0
+        set age 0
+        set pcolor white
+      ][
+        set age my-age
       ]
     ]
   ]
 end
 
-;;; ============ 5 CYTOTOXIC T LYMPHOCYTE ============
+
+
+to NK-confict-with-TC [tc]
+  ; If TC is proliferative or quiescent then it can fight, otherwise (NC) maintains the state
+  if ([state] of tc = 1 or tc = 2) [ ;;
+    ; Probability of TC die
+    let D_tc ([immune-dam] of tc)
+    let R_tc ([immune-res] of tc)
+    let p-tc-die (1 - exp (1.4 * (R_tc - D_tc - NK-force)))
+    show p-tc-die
+    let dice (random-float 1)
+    ifelse (dice < p-tc-die) [
+      ; If TC die then it turns to US state
+      ask tc [
+        create-US
+      ]
+    ][
+      ask tc
+      [
+        set immune-res (immune-res + TC-immune-gain)
+        set immune-dam (immune-dam + ( NK-force * TC-immune-damage-rate))
+      ]
+    ]
+  ]
+  ;;
+end
+
+
+to recruit-NK [p_rec]
+  let dice (random-float 1)
+  if dice < p_rec
+  [
+    create-NK
+  ]
+end
+
+;;; ============ 5 CTL CELLS RULES ================
+
 to rules-CTL
-  ;; CTL-TC conflict
+  ( ifelse (AIS-active? = 0) [
+    ask patches with [ state = 5 ] [
+      CTL-action
+    ]
+  ] (AIS-active? > 0) [
+    set AIS-active? (AIS-active? - 1)
+  ] )
 end
 
-;;; ============ 6 UNKNOWN STATE CELLS ============
-to rules-US
+to CTL-action
+  ;; revise if tumour
+  let TCneigh (neighbors with [tumor-cell? = true])
+  if any? TCneigh [
+    ; If tumour, then:
+
+    ; Liberate antigen
+    set antigen  min (list 1 (antigen + 6 * q_antigen))
+    ask patches in-radius 10 [
+      set antigen min (list 1 (antigen + q_antigen))
+    ]
+    ask patches in-radius 8 [
+      set antigen min (list 1 (antigen + 2 * q_antigen))
+    ]
+    ask patches in-radius 6 [
+      set antigen min (list 1 (antigen + 3 * q_antigen))
+    ]
+    ask patches in-radius 4 [
+      set antigen min (list 1 (antigen + 4 * q_antigen))
+    ]
+    ask patches in-radius 2 [
+      set antigen min (list 1 (antigen + 5 * q_antigen))
+    ]
+
+    ;; conflict with TC
+    CTL-confict-with-TC (one-of TCneigh)
+
+  ]
+  ;; check probabilistic survival
+  ifelse ( (random-float 1) < ( exp ( -1 / ( lifetime_i-factor * (age + 1) +  (fights ^ fights-factor) ) ) ) ) [
+
+    ;; if CTL does not survive then it turns to HC state
+    create-HC
+
+  ][
+    ; probabilistic random movement of CTL
+    let my-age (age + 1)
+    let my-fights (fights)
+    let transitable-ng (neighbors with [state = 0])
+    ifelse (any? transitable-ng) [
+      ask (rnd:weighted-one-of transitable-ng [antigen]) [ ;; roulette wheel selection
+        set state 5
+        set pcolor 115
+        set age my-age
+        set fights my-fights
+      ]
+    ][
+      set transitable-ng (neighbors with [state = 4])
+      ifelse (any? transitable-ng) [
+        ask (rnd:weighted-one-of transitable-ng [antigen]) [ ;; roulette wheel selection
+          set state 5
+          set pcolor 115
+          set age my-age
+          set fights my-fights
+        ]
+
+      ][
+         set age my-age
+        ]
+    ]
+  ]
 end
 
-;;; ============ 7 DEATH CELLS ============
+
+
+to CTL-confict-with-TC [tc]
+  ; If TC is proliferative or quiescent then it can fight, otherwise (NC) maintains the state
+  if ([state] of tc = 1 or tc = 2) [ ;;
+    ; Probability of TC die
+    let D_tc ([immune-dam] of tc)
+    let R_tc ([immune-res] of tc)
+    let p-tc-die (1 - exp (1.4 * (R_tc - D_tc - NK-force)))
+
+    let dice (random-float 1)
+    ifelse (dice < p-tc-die) [
+      ; If TC die then it turns to US state
+      ask tc [
+        create-US
+      ]
+    ][
+      ask tc
+      [
+        set immune-res (immune-res + TC-immune-gain)
+        set immune-dam (immune-dam + ( CTL-force * TC-immune-damage-rate))
+      ]
+    ]
+  ]
+  ;;
+end
+
+
+to rules-US ;; TO COMPLETE
+  ask patches with [state = 6] [
+    ifelse age >= limit [
+      create-DC
+    ][
+      set age (age + 1)
+    ]
+  ]
+end
+
 to rules-DC
-  ; Tissue repair
-  ask patches with [state = 7]
-  ; TODO: Which neighbor? Moore with radius 2? Moore with radius 1? From the paper: "We assumed that the state of DC can change into ES if it is surrounded by more than five NoCs."
-  ; [if (count neighbors with [state = 0] > 5) [set state 0]] ; Option a) TODO: DELETE
-  [if (count neighbors in-radius 2 with [state = 0] > 5) [set state 0]] ; Option b) TODO: DELETE
+  ask patches with [state = 7] [
+    if (count neighbors with [state = 0 or state = 4 or state = 5] >= 3) [
+      create-HC
+    ]
+  ]
 end
 
-;;; ============ 0 HEALTHY CELLS / EMPTY SPACES ================
-to rules-HC
-end
 
 ;;; ============== UTILS ==================
 
 to create-HC
+  set previous-state state
   set state 0
   set tumor-cell? false
   set pcolor white
+  set age 0
 end
 
-to create-PC
+to create-PC [ir]
+  set previous-state state
   set state 1
   set tumor-cell? true
   set age 0
   set limit random-init 1 10 ; random int between 1 and 10. TODO: Talk with the team about these values
   set pcolor red
+  set immune-res ir
 end
 
 to create-QC
+  set previous-state state
   set state 2
   set tumor-cell? true
   set pcolor pink
+  set age 0
 end
 
 to create-NC
+  set previous-state state
   set state 3
   set tumor-cell? true
   set pcolor 11
+  set age 0
 end
 
 to create-NK
+  set previous-state state
   set state 4
+  set pcolor sky
+  set age 0
   set tumor-cell? false
-  set pcolor blue
 end
 
 to create-CTL
+  set previous-state state
+  set age 0
   set state 5
+  set pcolor 115
+  set age 0
+  set fights 0
   set tumor-cell? false
-  set pcolor lime
 end
+
 to create-US
+  set previous-state state
+  set tumor-cell? false
   set state 6
-  set tumor-cell? false
-  set pcolor yellow
+  set limit (random 5)
+  set age 0
+  set pcolor 126
 end
+
 to create-DC
-  set state 7
+  set previous-state state
   set tumor-cell? false
-  set pcolor grey
-
+  set state 7
+  set limit 0
+  set age 0
+  set pcolor 7
 end
 
+
+
+;; ------------------------
+;; IS RELATED FUNCTIONS
+;; ------------------------
+
+to check-IS
+  let num-NK (count patches with [state = 4])
+  let NK-lack max (list 0 (NK-threshold * num-patches - num-NK))
+
+  if (NK-lack != 0) [
+    ask ( n-of NK-lack (patches with [state = 0]) ) [
+      create-NK
+    ]
+  ]
+end
+
+to activate-IS-now
+  if (not activate-IS-at?) [
+    set IS-active? 0
+    check-IS
+  ]
+end
+
+to adjust-antigen
+  diffuse antigen diffusion-rate
+  ask patches
+  [ set antigen (antigen * (1 - evaporation-rate)) ;; slowly evaporate chemical
+    ; recolor-patch
+    if (state = 0 and antigen > 0) [
+       set pcolor(49.9 - 6 * antigen)
+    ]
+  ]
+end
 
 ; Returns a random number between m and m + s - 1
 to-report random-init [m s]
  report m + random s
 end
+
+
 @#$#@#$#@
 GRAPHICS-WINDOW
-255
-13
-665
-424
+279
+27
+689
+438
 -1
 -1
 2.0
@@ -322,10 +588,10 @@ ticks
 30.0
 
 BUTTON
-11
-28
-74
-61
+37
+26
+100
+59
 NIL
 setup
 NIL
@@ -339,10 +605,10 @@ NIL
 1
 
 BUTTON
-77
-28
-140
-61
+104
+26
+167
+59
 NIL
 go
 NIL
@@ -356,10 +622,10 @@ NIL
 1
 
 BUTTON
-144
-28
-236
-61
+172
+26
+264
+59
 go-forever
 go
 T
@@ -373,10 +639,10 @@ NIL
 1
 
 PLOT
-676
-15
-896
-209
+703
+28
+923
+222
 Radius
 Iterations (5 h)
 Radius (mm)
@@ -393,10 +659,10 @@ PENS
 "R_n" 1.0 0 -7500403 true "" "plot R_n * unit-conversion"
 
 SLIDER
-10
-68
-182
-101
+37
+97
+264
+130
 p_0
 p_0
 0
@@ -408,10 +674,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-10
-105
-182
-138
+37
+134
+264
+167
 a_p
 a_p
 0
@@ -423,10 +689,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-10
-138
-182
+37
 171
+264
+204
 a_q
 a_q
 0
@@ -438,10 +704,10 @@ NIL
 HORIZONTAL
 
 MONITOR
-900
-15
-964
-60
+927
+28
+991
+73
 R_t (mm)
 R_t * unit-conversion
 2
@@ -449,10 +715,10 @@ R_t * unit-conversion
 11
 
 MONITOR
-900
-65
-966
-110
+927
+78
+993
+123
 R_p (mm)
 R_p * unit-conversion
 2
@@ -460,10 +726,10 @@ R_p * unit-conversion
 11
 
 MONITOR
-900
-114
-966
-159
+927
+127
+993
+172
 R_n (mm)
 R_n * unit-conversion
 2
@@ -471,10 +737,10 @@ R_n * unit-conversion
 11
 
 PLOT
-1082
-217
-1282
-367
+1109
+230
+1309
+380
 N PC
 Iterations (5 h)
 Number of PC
@@ -489,10 +755,10 @@ PENS
 "N_PC" 1.0 0 -16777216 true "" "plot count patches with [state = 1]"
 
 PLOT
-879
-217
-1079
-367
+906
+230
+1106
+380
 N QC
 Iterations (5 h)
 Number of QC
@@ -507,10 +773,10 @@ PENS
 "N_QC" 1.0 0 -16777216 true "" "plot count patches with [state = 2]"
 
 PLOT
-676
-217
-876
-367
+703
+230
+903
+380
 N NC
 Iterations (5 h)
 Number of NC
@@ -525,10 +791,10 @@ PENS
 "N_NC" 1.0 0 -16777216 true "" "plot count patches with [state = 3]"
 
 PLOT
-973
-14
-1222
-209
+1000
+27
+1249
+222
 Volume
 Iterations (5 h)
 Volume (cm^3)
@@ -543,10 +809,10 @@ PENS
 "volume" 1.0 0 -16777216 true "" "plot (4 / 3 * pi * (R_t * unit-conversion) ^ 3) / 1000"
 
 MONITOR
-900
-164
-967
-209
+927
+177
+994
+222
 V (cm^3)
 (4 / 3 * pi * (R_t * unit-conversion) ^ 3) / 1000
 2
@@ -554,19 +820,235 @@ V (cm^3)
 11
 
 SLIDER
-11
-176
-183
-209
-NK_Concentration
-NK_Concentration
+37
+343
+264
+376
+q_antigen
+q_antigen
 0
-0.1
-0.1
-0.005
+1
+0.25
+0.01
 1
 NIL
 HORIZONTAL
+
+TEXTBOX
+38
+213
+210
+231
+INMUNE SYSTEM SETTINGS
+12
+0.0
+1
+
+TEXTBOX
+39
+74
+197
+92
+PROLIFERATION SETTINGS
+12
+0.0
+1
+
+INPUTBOX
+179
+272
+264
+340
+IS-act-time
+15.0
+1
+0
+Number
+
+BUTTON
+37
+271
+175
+304
+activate-IS-now
+activate-IS-now
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+0
+
+SLIDER
+37
+234
+264
+267
+NK-threshold
+NK-threshold
+0
+0.30
+0.03
+0.01
+1
+* ncell
+HORIZONTAL
+
+SWITCH
+37
+307
+176
+340
+activate-IS-at?
+activate-IS-at?
+0
+1
+-1000
+
+INPUTBOX
+38
+454
+151
+514
+lifetime_I-factor
+0.18
+1
+0
+Number
+
+INPUTBOX
+158
+454
+265
+514
+fights-factor
+0.6
+1
+0
+Number
+
+SLIDER
+37
+380
+265
+413
+diffusion-rate
+diffusion-rate
+0
+1
+0.61
+0.01
+1
+NIL
+HORIZONTAL
+
+SLIDER
+37
+415
+265
+448
+evaporation-rate
+evaporation-rate
+0
+0.25
+0.01
+0.01
+1
+NIL
+HORIZONTAL
+
+SLIDER
+38
+518
+265
+551
+NK-force
+NK-force
+0
+1
+0.3
+0.01
+1
+NIL
+HORIZONTAL
+
+SLIDER
+38
+555
+264
+588
+CTL-force
+CTL-force
+0
+1
+0.85
+0.01
+1
+NIL
+HORIZONTAL
+
+SLIDER
+38
+591
+264
+624
+TC-immune-gain
+TC-immune-gain
+0
+1
+0.01
+0.01
+1
+NIL
+HORIZONTAL
+
+SLIDER
+39
+627
+264
+660
+TC-immune-damage-rate
+TC-immune-damage-rate
+0
+1
+0.1
+0.01
+1
+NIL
+HORIZONTAL
+
+INPUTBOX
+40
+663
+265
+723
+IS-recruitment-factor
+1.0
+1
+0
+Number
+
+PLOT
+702
+384
+902
+534
+N IC
+Iterations (5h)
+No. ICS
+0.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"NK" 1.0 0 -13791810 true "" "plot count patches with [state = 4]"
+"CTL" 1.0 0 -8630108 true "" "plot count patches with [state = 5]"
 
 @#$#@#$#@
 ## WHAT IS IT?
