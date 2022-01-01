@@ -139,7 +139,13 @@ to update-globals
 end
 
 ;;; ============ 0 HEALTHY CELLS / EMPTY SPACES ================
-to rules-HC
+to rules-HC      ; These rules have been created to eliminate the CHs that are created inside the tumor
+  ask patches with [state = 0]
+  [
+    let NCneigh (count neighbors with [state = 3])
+    let DCneigh (count neighbors with [state = 7])
+    if NCneigh + DCneigh = 8 [create-DC]
+  ]
 end
 
 ;;; ============= 1 PROLIFERATIVE CELLS ===============
@@ -203,7 +209,9 @@ to rules-QC
       let rpa random-init R_p (R_p * 0.1)      ; uniform random number between R_p and R_p + 10%R_p
       let rna random-init R_n (- R_n * 0.1)    ; uniform random number between R_n and R_n - 10%R_n and R_n
       if r >= rpa  [create-PC immune-res]      ; QC->PC if is is in PC zone
-      if r <=  rna [create-NC]                 ; QC->NC if it is in NC zone
+      if R_t >= (R_max / 6.5) [                ; Distance from which QC become NC due to lack of nutrients
+        if r <=  rna [create-NC]                 ; QC->NC if it is in NC zone
+      ]
     ]
   ]
 end
@@ -470,7 +478,7 @@ to create-QC
   set previous-state state
   set state 2
   set tumor-cell? true
-  set pcolor pink
+  set pcolor 17
   set age 0
 end
 
@@ -506,7 +514,7 @@ to create-US
   set state 6
   set limit (random 5)
   set age 0
-  set pcolor 126
+  set pcolor 112
 end
 
 to create-DC
@@ -515,7 +523,7 @@ to create-DC
   set state 7
   set limit 0
   set age 0
-  set pcolor 7
+  set pcolor 12
 end
 
 
@@ -557,7 +565,6 @@ end
 to-report random-init [m s]
  report m + random s
 end
-
 
 @#$#@#$#@
 GRAPHICS-WINDOW
@@ -682,7 +689,7 @@ a_p
 a_p
 0
 0.99
-0.6
+0.51
 0.01
 1
 NIL
@@ -697,7 +704,7 @@ a_q
 a_q
 0
 1 - a_p
-0.35
+0.38
 0.01
 1
 NIL
@@ -828,7 +835,7 @@ q_antigen
 q_antigen
 0
 1
-0.25
+0.04
 0.01
 1
 NIL
@@ -891,7 +898,7 @@ NK-threshold
 NK-threshold
 0
 0.30
-0.03
+0.02
 0.01
 1
 * ncell
@@ -939,7 +946,7 @@ diffusion-rate
 diffusion-rate
 0
 1
-0.61
+0.92
 0.01
 1
 NIL
@@ -954,7 +961,7 @@ evaporation-rate
 evaporation-rate
 0
 0.25
-0.01
+0.25
 0.01
 1
 NIL
@@ -969,7 +976,7 @@ NK-force
 NK-force
 0
 1
-0.3
+0.21
 0.01
 1
 NIL
@@ -984,7 +991,7 @@ CTL-force
 CTL-force
 0
 1
-0.85
+0.36
 0.01
 1
 NIL
@@ -999,7 +1006,7 @@ TC-immune-gain
 TC-immune-gain
 0
 1
-0.01
+0.12
 0.01
 1
 NIL
@@ -1014,7 +1021,7 @@ TC-immune-damage-rate
 TC-immune-damage-rate
 0
 1
-0.1
+0.29
 0.01
 1
 NIL
