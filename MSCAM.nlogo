@@ -25,6 +25,18 @@ globals[
  IS-active? ;; Int that indicates the times to activate IS
  AIS-active? ;; Int that indicates the times to activate AIS (Adaptative Immune-System)
 
+
+ ;; ------------------
+ ;; PA related globals
+ ;; ------------------
+ ; PA-active? ;; Bool that indicates if PA is active ; TODO: Eliminate if useless
+ c_i ;; List of c_i, the attenuation coefficient of the drug, for each state i
+ gamma_i ;; List of gamma_i, the adquired resistance factor, for each state i
+ k_i ;; List of k_i, the kill rate, for each state i
+ t_n ;; The beginning of each cycle
+ t_n+1 ;; The end of each cycle
+ ; n_d ;; Number of cycles
+ ; tau ;; Length of each cycle
 ]
 
 ;; ========== CUSTOM PATCHES ==============
@@ -44,7 +56,7 @@ patches-own [
 
   previous-state  ;; int {0,...,7} - previous state of an US
   ;; -- Following attributes may be needed for next developments
-  ;;  drug-res?       ;; bool - if drug-res? then DRC else DSC
+  drug-res?       ;; bool - if drug-res? then DRC else DSC
 ]
 
 ;; ========== INITIALIZATION AND GO ============
@@ -86,6 +98,24 @@ to setup
 
    set AIS-active? (-1)
 
+  ;; PA settings
+
+  if (PA-active?) [
+    set c_i [1 1 1 1 1 1 1 1] ; TODO: Fit globals
+    set gamma_i [1 1 1 1 1 1 1 1]
+    set k_i [1 1 1 1 1 1 1 1]
+    set t_n tau ; TODO: Check
+    set t_n+1 2 * tau
+
+    ask patches [
+      ifelse (random-float 1 < drug-res-prob) [
+        set drug-res? true
+      ] [
+        set drug-res? false
+      ]
+    ]
+  ]
+
   reset-ticks
 end
 
@@ -119,6 +149,9 @@ to go
 
   ;;; antigen diffusion and evaporation
   adjust-antigen
+
+  ;;; PA
+  go-PA
   tick
 end
 
@@ -136,6 +169,22 @@ to update-globals
   ][
     set IS-active? (max (list -1 (IS-active? - 1)))
   ]
+
+  ;; PA globals
+  if (PA-active?) [
+    set c_i [1 1 1 1 1 1 1 1] ; TODO: Update globals
+    set gamma_i [1 1 1 1 1 1 1 1]
+    set k_i [1 1 1 1 1 1 1 1]
+    ; TODO: After of before death-probability, from go-PA?
+    if (ticks = t_n+1) [
+      set t_n t_n+1
+      set t_n+1 t_n + tau ; TODO: Check
+    ]
+
+    ; set p_0 p_0 * exp(item 1 c_i * (ticks - (t_n + tau))) ; Effect of PA in proliferation probability
+    set p_0 p_0 ^ (100 / 99); Provisional effect of PA in proliferation probability. TODO: Delete
+  ]
+
 end
 
 ;;; ============ 0 HEALTHY CELLS / EMPTY SPACES ================
@@ -453,6 +502,29 @@ to rules-DC
   ]
 end
 
+;;; PHARMACOLOGICAL ACTION
+to go-PA
+  ask patches [
+    if (random-float 1 < death-probability and not drug-res?) [
+      set state 2 ;; TODO: Check if QS or DS (QS)
+    ]
+  ]
+end
+
+to-report death-probability
+  ; Example: ask patch 0 0 [show death-probability]
+  ; Inside a "ask patches []" chunk
+  ifelse (drug-res?) [
+    report 0
+  ] [
+    let gamma_i-selected item state gamma_i
+    let k_i-selected item state k_i
+    let c_i-selected item state c_i
+    let exit gamma_i-selected * k_i-selected * exp(- c_i-selected * (ticks - t_n))
+    report exit
+  ]
+end
+
 
 ;;; ============== UTILS ==================
 
@@ -565,7 +637,6 @@ end
 to-report random-init [m s]
  report m + random s
 end
-
 @#$#@#$#@
 GRAPHICS-WINDOW
 279
@@ -674,7 +745,7 @@ p_0
 p_0
 0
 1
-0.7
+0.898374852669802
 0.01
 1
 NIL
@@ -689,7 +760,7 @@ a_p
 a_p
 0
 0.99
-0.51
+0.34
 0.01
 1
 NIL
@@ -1056,6 +1127,72 @@ false
 PENS
 "NK" 1.0 0 -13791810 true "" "plot count patches with [state = 4]"
 "CTL" 1.0 0 -8630108 true "" "plot count patches with [state = 5]"
+
+TEXTBOX
+288
+452
+515
+480
+PHARMACOLOGICAL ACTION SETTINGS
+11
+0.0
+1
+
+SWITCH
+286
+474
+400
+507
+PA-active?
+PA-active?
+0
+1
+-1000
+
+SLIDER
+428
+481
+600
+514
+drug-res-prob
+drug-res-prob
+0
+1
+0.94
+0.01
+1
+NIL
+HORIZONTAL
+
+SLIDER
+287
+518
+459
+551
+n_d
+n_d
+0
+100
+50.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+293
+564
+465
+597
+tau
+tau
+0
+100
+50.0
+1
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
