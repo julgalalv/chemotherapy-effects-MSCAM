@@ -453,7 +453,7 @@ to CTL-action
       set antigen min (list 1 (antigen + 5 * q_antigen))
     ]
 
-    ;; conflict with TC
+    ;; conflict with TC if tumour
     CTL-confict-with-TC (one-of TCneigh)
 
   ]
