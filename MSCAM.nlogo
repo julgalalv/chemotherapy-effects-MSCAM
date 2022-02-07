@@ -35,8 +35,12 @@ globals[
  k_i ;; List of k_i, the kill rate, for each state i
  t_n ;; The beginning of each cycle
  t_n+1 ;; The end of each cycle
+ n ;; The index of the cycle in which we are
  ; n_d ;; Number of cycles
  ; tau ;; Length of each cycle
+ ; t_ap ;; Beginning of the treatment
+ ; t_per ;; Waiting time between cycles
+ ; t_ad ;; Adaptation time
 ]
 
 ;; ========== CUSTOM PATCHES ==============
@@ -101,11 +105,30 @@ to setup
   ;; PA settings
 
   if (PA-active?) [
-    set c_i [1 1 1 1 1 1 1 1] ; TODO: Fit globals
-    set gamma_i [1 1 1 1 1 1 1 1]
-    set k_i [1 1 1 1 1 1 1 1]
-    set t_n tau ; TODO: Check
-    set t_n+1 2 * tau
+    ; TODO: Fit globals
+    ; 1 2 3 4 5 6 7 8
+    ; HC PC QC NC NK CTL US DC
+    set c_i [1 1 1 1 1 1 1 1] ; 0.5 - 1
+    ; set gamma_i [1 1 1 1 1 1 1 1] ; TODO: Delete if useless
+    let gamma_pc random-between 0.55 0.95
+    let gamma_qc random-between 0 0.4
+    ; TODO: Check
+    let gamma_nk random-between 0 0.7
+    let gamma_ctl random-between 0 0.7
+    set gamma_i (list 1 gamma_pc gamma_qc 1 gamma_nk gamma_ctl 1 1)
+    ; set k_i [1 1 1 1 1 1 1 1] ; TODO: Delete if useless
+    let k_pc 0.8
+    let k_qc 0.4
+    let k_nk 0.6
+    let k_ctl 0.6
+    set k_i (list 1 k_pc k_qc 1 k_nk k_ctl 1 1)
+
+    ; n_d y tau son valores de entrada
+    ; Originalmente: F_i(g) = ... e^{c_i * (t - n_d * t)}, con t entre n_d * tau y (n_d + 1) * tau
+    ; Actualmente: p_Dî(t) = ... e^{c_i * (t - t_n)}, con t entre tn = t_ap + (n-1) * t_per, t_{n+1} = t_n + tau
+    set n 0 ; No hemos empezado el tratamiento aún
+    set t_n tau
+    set t_n+1 t_n + tau
 
     ask patches [
       ifelse (random-float 1 < drug-res-prob) [
@@ -172,17 +195,30 @@ to update-globals
 
   ;; PA globals
   if (PA-active?) [
-    set c_i [1 1 1 1 1 1 1 1] ; TODO: Update globals
-    set gamma_i [1 1 1 1 1 1 1 1]
-    set k_i [1 1 1 1 1 1 1 1]
-    ; TODO: After of before death-probability, from go-PA?
-    if (ticks = t_n+1) [
-      set t_n t_n+1
-      set t_n+1 t_n + tau ; TODO: Check
+    ; set c_i [1 1 1 1 1 1 1 1] ; Constant
+    ; set k_i [1 1 1 1 1 1 1 1] ; Constant
+    if ((ticks - t_ap) mod t_ad = 0) [ ; TODO: Customize it
+      let gamma_pc (item 1 gamma_i) * random-between 0.9 1
+      let gamma_qc (item 2 gamma_i) * random-between 0.9 1
+      let gamma_nk (item 4 gamma_i) * random-between 0.9 1
+      let gamma_ctl (item 5 gamma_i) * random-between 0.9 1
+      set gamma_i (list 1 gamma_pc gamma_qc 1 gamma_nk gamma_ctl 1 1)
     ]
 
-    ; set p_0 p_0 * exp(item 1 c_i * (ticks - (t_n + tau))) ; Effect of PA in proliferation probability
-    set p_0 p_0 ^ (100 / 99); Provisional effect of PA in proliferation probability. TODO: Delete
+    if (ticks > t_ap and n = 0) [ ; Si aún no lo hemos definido pero ya hemos empezado el tratamiento
+      set n 1
+    ]
+
+    ; TODO: After of before death-probability, from go-PA?
+    if (ticks = t_n+1) [
+      ; Originalmente: F_i(g) = ... e^{c_i * (t - n_d * t)}, con t entre n_d * tau y (n_d + 1) * tau
+      ; Actualmente: p_Dî(t) = ... e^{c_i * (t - t_n)}, con t entre tn = t_ap + (n-1) * t_per, t_{n+1} = t_n + tau
+      set t_n t_ap + (n - 1) * t_per
+      set t_n+1 t_n + tau
+    ]
+
+    set p_0 p_0 * exp(item 1 c_i * (ticks - (t_n + tau))) ; Effect of PA in proliferation probability
+    ; set p_0 p_0 ^ (100 / 99) ; Provisional effect of PA in proliferation probability. TODO: Delete
   ]
 
 end
@@ -480,7 +516,6 @@ to CTL-confict-with-TC [tc]
       ]
     ]
   ]
-  ;;
 end
 
 
@@ -504,9 +539,9 @@ end
 
 ;;; PHARMACOLOGICAL ACTION
 to go-PA
-  ask patches [
-    if (random-float 1 < death-probability and not drug-res?) [
-      set state 2 ;; TODO: Check if QS or DS (QS)
+  ask patches with [state != 3 and not drug-res?][ ; Not NC and neither drug resistant
+    if (random-float 1 < death-probability) [
+      set state 7 ;; Enters into DS
     ]
   ]
 end
@@ -514,17 +549,31 @@ end
 to-report death-probability
   ; Example: ask patch 0 0 [show death-probability]
   ; Inside a "ask patches []" chunk
-  ifelse (drug-res?) [
-    report 0
-  ] [
-    let gamma_i-selected item state gamma_i
-    let k_i-selected item state k_i
-    let c_i-selected item state c_i
-    let exit gamma_i-selected * k_i-selected * exp(- c_i-selected * (ticks - t_n))
-    report exit
-  ]
+  let gamma_i-selected item state gamma_i
+  let k_i-selected item state k_i
+  let c_i-selected item state c_i
+  let exit gamma_i-selected * k_i-selected * exp(- c_i-selected * (ticks - t_n))
+  report exit
 end
 
+to-report mean-death-prob
+  let tot 0
+  let n_tot 0
+  ask patches with [not drug-res?] [
+    set tot tot + death-probability
+    set n_tot n_tot + 1
+  ]
+  report precision (tot / n_tot) 2
+end
+
+; TODO: Check
+to-report p_D [i]
+  let exit -1
+  ask one-of patches with [state = i] [
+    set exit death-probability
+  ]
+  report precision exit 2
+end
 
 ;;; ============== UTILS ==================
 
@@ -637,6 +686,11 @@ end
 to-report random-init [m s]
  report m + random s
 end
+
+; Returns a random float between a and b
+to-report random-between [a b]
+  report a + random-float (b - a)
+end
 @#$#@#$#@
 GRAPHICS-WINDOW
 279
@@ -745,7 +799,7 @@ p_0
 p_0
 0
 1
-0.898374852669802
+0.0
 0.01
 1
 NIL
@@ -760,7 +814,7 @@ a_p
 a_p
 0
 0.99
-0.34
+0.76
 0.01
 1
 NIL
@@ -775,7 +829,7 @@ a_q
 a_q
 0
 1 - a_p
-0.38
+0.01
 0.01
 1
 NIL
@@ -1145,32 +1199,47 @@ SWITCH
 507
 PA-active?
 PA-active?
-0
+1
 1
 -1000
 
 SLIDER
-428
-481
-600
-514
+464
+471
+636
+504
 drug-res-prob
 drug-res-prob
 0
 1
-0.94
+0.57
 0.01
 1
 NIL
 HORIZONTAL
 
 SLIDER
+286
+511
+458
+544
+n_d
+n_d
+0
+100
+49.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
 287
-518
+547
 459
-551
-n_d
-n_d
+580
+tau
+tau
 0
 100
 50.0
@@ -1180,12 +1249,27 @@ NIL
 HORIZONTAL
 
 SLIDER
-293
-564
-465
-597
-tau
-tau
+288
+582
+460
+615
+t_ap
+t_ap
+0
+100
+85.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+290
+618
+462
+651
+t_per
+t_per
 0
 100
 50.0
@@ -1193,6 +1277,120 @@ tau
 1
 NIL
 HORIZONTAL
+
+SLIDER
+290
+654
+462
+687
+t_ad
+t_ad
+0
+100
+50.0
+1
+1
+NIL
+HORIZONTAL
+
+MONITOR
+701
+543
+811
+588
+NIL
+mean-death-prob
+2
+1
+11
+
+MONITOR
+820
+543
+877
+588
+p_D(0)
+p_D 0
+2
+1
+11
+
+MONITOR
+884
+543
+941
+588
+p_D(1)
+p_D 1
+17
+1
+11
+
+MONITOR
+821
+594
+878
+639
+p_D(2)
+p_D 2
+17
+1
+11
+
+MONITOR
+885
+594
+942
+639
+p_D(3)
+p_D 3
+17
+1
+11
+
+MONITOR
+822
+646
+879
+691
+p_D(4)
+p_D 4
+17
+1
+11
+
+MONITOR
+887
+646
+944
+691
+p_D(5)
+p_D 5
+17
+1
+11
+
+MONITOR
+823
+697
+880
+742
+p_D(6)
+p_D 6
+17
+1
+11
+
+MONITOR
+888
+697
+945
+742
+p_D(7)
+p_D 7
+17
+1
+11
 
 @#$#@#$#@
 ## WHAT IS IT?
