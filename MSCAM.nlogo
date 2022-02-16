@@ -87,8 +87,10 @@ to setup
 
   ;; IS settings
 
-  if (activate-IS-at?) [
+  ifelse (activate-IS-at?) [
     set IS-active? IS-act-time
+  ][
+    set IS-active? (-1)
   ]
 
    set AIS-active? (-1)
@@ -141,6 +143,7 @@ end
 
 ;;; ============= GLOBALS UPDATES ==================
 to update-globals
+
   ;; Proliferation globals
   set R_t mean [r] of patches with [count neighbors with [tumor-cell? = false] > 0 and tumor-cell?]
   set W_p a_p * R_t ^ ( 2 / 3 )
@@ -156,8 +159,8 @@ to update-globals
 
   ;; TREATMENT GLOBALS
   if (ticks = t_ap) [
-    let num_pc (count patches with [state = 2])
-    ask n-of ((floor (0.2 * num_pc)) + 1) patches with [state = 2] [
+    let num_pc (count patches with [state = 1])
+    ask n-of ((floor (0.2 * num_pc)) + 1) patches with [state = 1] [
       set is-DRC? true
     ]
   ]
@@ -721,7 +724,6 @@ end
 to-report random-init [m s]
  report m + random s
 end
-
 @#$#@#$#@
 GRAPHICS-WINDOW
 279
@@ -860,7 +862,7 @@ a_q
 a_q
 0
 1 - a_p
-0.35
+0.27
 0.01
 1
 NIL
@@ -1280,7 +1282,7 @@ gamma_PC
 gamma_PC
 0.55
 0.95
-0.64
+0.715
 0.005
 1
 NIL
