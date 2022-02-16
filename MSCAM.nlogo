@@ -1,5 +1,5 @@
 ;; ========== EXTENSIONS =============
-extensions [ rnd ]
+extensions [ rnd table]
 
 ;; ========== INTERNAL GLOBAL VARIABLES =============
 globals[
@@ -26,21 +26,13 @@ globals[
  AIS-active? ;; Int that indicates the times to activate AIS (Adaptative Immune-System)
 
 
- ;; ------------------
- ;; PA related globals
- ;; ------------------
- ; PA-active? ;; Bool that indicates if PA is active ; TODO: Eliminate if useless
- c_i ;; List of c_i, the attenuation coefficient of the drug, for each state i
- gamma_i ;; List of gamma_i, the adquired resistance factor, for each state i
- k_i ;; List of k_i, the kill rate, for each state i
- t_n ;; The beginning of each cycle
- t_n+1 ;; The end of each cycle
- n ;; The index of the cycle in which we are
- ; n_d ;; Number of cycles
- ; tau ;; Length of each cycle
- ; t_ap ;; Beginning of the treatment
- ; t_per ;; Waiting time between cycles
- ; t_ad ;; Adaptation time
+ ;;-------------------------
+ ;; PHARMACO related globals
+ ;;-------------------------
+ P_DRC ;; 0 < P_DRC < 1 (~10%) that indicates the probability of be DRC
+ n_cur ;; a counter that reflects the number of chemotherapy cycles has been applied
+ t_refs ;; relevant treatment application time references
+ gamma ;; table or reals that modelates the adquired drug resistance
 ]
 
 ;; ========== CUSTOM PATCHES ==============
@@ -60,7 +52,8 @@ patches-own [
 
   previous-state  ;; int {0,...,7} - previous state of an US
   ;; -- Following attributes may be needed for next developments
-  drug-res?       ;; bool - if drug-res? then DRC else DSC
+  is-DRC?       ;; bool that indicates if a tumoral cell is DRC or not.
+  n_dead        ;; float number between 1 and 5 that indicates the cell may die after n_dead consumptions
 ]
 
 ;; ========== INITIALIZATION AND GO ============
@@ -90,55 +83,26 @@ to setup
     set r sqrt(pxcor * pxcor + pycor * pycor)
     create-HC ;; Every patch begins as a HC
   ]
-  ask patch 0 0 [create-PC[0]] ;; The tumor is born with 1 PC, in the center of the lattice
+  ask patch 0 0 [create-PC 0 false] ;; The tumor is born with 1 PC, in the center of the lattice
 
   ;; IS settings
 
-  ifelse (activate-IS-at?) [
+  if (activate-IS-at?) [
     set IS-active? IS-act-time
-  ][
-    set IS-active? (-1)
   ]
 
    set AIS-active? (-1)
 
-  ;; PA settings
 
-  if (PA-active?) [
-    ; TODO: Fit globals
-    ; 1 2 3 4 5 6 7 8
-    ; HC PC QC NC NK CTL US DC
-    set c_i [1 1 1 1 1 1 1 1] ; 0.5 - 1
-    ; set gamma_i [1 1 1 1 1 1 1 1] ; TODO: Delete if useless
-    let gamma_pc random-between 0.55 0.95
-    let gamma_qc random-between 0 0.4
-    ; TODO: Check
-    let gamma_nk random-between 0 0.7
-    let gamma_ctl random-between 0 0.7
-    set gamma_i (list 1 gamma_pc gamma_qc 1 gamma_nk gamma_ctl 1 1)
-    ; set k_i [1 1 1 1 1 1 1 1] ; TODO: Delete if useless
-    let k_pc 0.8
-    let k_qc 0.4
-    let k_nk 0.6
-    let k_ctl 0.6
-    set k_i (list 1 k_pc k_qc 1 k_nk k_ctl 1 1)
+  ;; TREATMENT settings
 
-    ; n_d y tau son valores de entrada
-    ; Originalmente: F_i(g) = ... e^{c_i * (t - n_d * t)}, con t entre n_d * tau y (n_d + 1) * tau
-    ; Actualmente: p_Dî(t) = ... e^{c_i * (t - t_n)}, con t entre tn = t_ap + (n-1) * t_per, t_{n+1} = t_n + tau
-    set n 0 ; No hemos empezado el tratamiento aún
-    set t_n tau
-    set t_n+1 t_n + tau
-
-    ask patches [
-      ifelse (random-float 1 < drug-res-prob) [
-        set drug-res? true
-      ] [
-        set drug-res? false
-      ]
-    ]
-  ]
-
+  set n_cur 0                    ;; Initialize the counter of treatment applied cycles
+  set t_refs []                     ;; Initialize times of drug application relevant for current time
+  set gamma table:make
+  table:put gamma 1 gamma_PC
+  table:put gamma 2 gamma_QC
+  table:put gamma 4 gamma_IC
+  table:put gamma 5 gamma_IC
   reset-ticks
 end
 
@@ -172,9 +136,6 @@ to go
 
   ;;; antigen diffusion and evaporation
   adjust-antigen
-
-  ;;; PA
-  go-PA
   tick
 end
 
@@ -193,56 +154,74 @@ to update-globals
     set IS-active? (max (list -1 (IS-active? - 1)))
   ]
 
-  ;; PA globals
-  if (PA-active?) [
-    ; set c_i [1 1 1 1 1 1 1 1] ; Constant
-    ; set k_i [1 1 1 1 1 1 1 1] ; Constant
-    if ((ticks - t_ap) mod t_ad = 0) [ ; TODO: Customize it
-      let gamma_pc (item 1 gamma_i) * random-between 0.9 1
-      let gamma_qc (item 2 gamma_i) * random-between 0.9 1
-      let gamma_nk (item 4 gamma_i) * random-between 0.9 1
-      let gamma_ctl (item 5 gamma_i) * random-between 0.9 1
-      set gamma_i (list 1 gamma_pc gamma_qc 1 gamma_nk gamma_ctl 1 1)
+  ;; TREATMENT GLOBALS
+  if (ticks = t_ap) [
+    let num_pc (count patches with [state = 2])
+    ask n-of ((floor (0.2 * num_pc)) + 1) patches with [state = 2] [
+      set is-DRC? true
     ]
+  ]
+  if ( (n_cur != n_d) and (ticks = (t_ap + (n_cur * t_per)))) [
+    set n_cur min (list (n_cur + 1) (n_d + 1))
+    set t_refs (lput ticks t_refs)
+  ]
 
-    if (ticks > t_ap and n = 0) [ ; Si aún no lo hemos definido pero ya hemos empezado el tratamiento
-      set n 1
-    ]
-
-    ; TODO: After of before death-probability, from go-PA?
-    if (ticks = t_n+1) [
-      ; Originalmente: F_i(g) = ... e^{c_i * (t - n_d * t)}, con t entre n_d * tau y (n_d + 1) * tau
-      ; Actualmente: p_Dî(t) = ... e^{c_i * (t - t_n)}, con t entre tn = t_ap + (n-1) * t_per, t_{n+1} = t_n + tau
-      set t_n t_ap + (n - 1) * t_per
-      set t_n+1 t_n + tau
-    ]
-
-    set p_0 p_0 * exp(item 1 c_i * (ticks - (t_n + tau))) ; Effect of PA in proliferation probability
-    ; set p_0 p_0 ^ (100 / 99) ; Provisional effect of PA in proliferation probability. TODO: Delete
+  forEach (table:keys gamma) [
+    k ->
+    table:put gamma k ((table:get gamma k) * 0.999)
   ]
 
 end
 
 ;;; ============ 0 HEALTHY CELLS / EMPTY SPACES ================
-to rules-HC      ; These rules have been created to eliminate the CHs that are created inside the tumor
-  ask patches with [state = 0]
-  [
-    let NCneigh (count neighbors with [state = 3])
-    let DCneigh (count neighbors with [state = 7])
-    if NCneigh + DCneigh = 8 [create-DC]
-  ]
+to rules-HC
 end
 
 ;;; ============= 1 PROLIFERATIVE CELLS ===============
 
 to rules-PC
+  let  phi 1
+  let psi 1
+  let new_t_refs []
+  forEach t_refs [
+  t ->
+    if (t > ticks - tau) [
+      set new_t_refs (lput t new_t_refs)
+      set phi (phi * exp( (c_PC) * (ticks - (t + tau)) ) )
+      set psi (psi * exp( -(c_PC) * (ticks - t) ) )
+    ]
+  ]
+  set t_refs new_t_refs
+
   ask patches with [state = 1]
   [
-    if-else divide? p_0 r
+
+     if is-DRC? [
+      set phi 1
+    ]
+
+
+    ifelse ((not empty? t_refs) and (not is-DRC?) and (n_dead = 0)) [
+        let Pd_ (table:get gamma state) * k_pc * psi
+        let rdeath (random-float 1)
+
+        ifelse (rdeath < Pd_) [
+          create-DC
+        ][
+          create-US
+        ]
+    ][
+      if ((not empty? t_refs)) [
+        set n_dead max (list (n_dead - 1) 0)
+      ]
+
+    if-else divide? (phi * p_0) r
       [divide-in-W_p]                             ; Proliferate in neighbourhood W_p if possible if it can divide with probability P_div(p_0,r)
       [set age age + 1]                           ; Else its age increases
     let rpa random-init R_p (- R_p * 0.1)         ; uniform random number between R_p and R_p - 10%R_p and R_p
-    if age > limit or r < rpa  [create-QC]        ; If the age has reached the limit or the cell is in QC zone, it turns to QC
+    if age > limit or r < rpa  [create-QC is-DRC?]        ; If the age has reached the limit or the cell is in QC zone, it turns to QC
+
+    ]
   ]
 end
 
@@ -255,13 +234,15 @@ to divide-in-W_p
     let W_p-neighbors neighbors in-radius x with [state = 0]        ; list of HC neighbours in radius x
     ; If exists at least 1 HC in neighbourhood
     if count W_p-neighbors > 0 [
+      let rdrc (random 1)
       ; it proliferates and invades HC
       set divided true
-      create-PC immune-res
+      let parent-DRC? is-DRC?
+      create-PC immune-res ((rdrc = 0) and parent-DRC?)
 
       ; it liberates an small amount of antigen
       ask one-of W_p-neighbors [
-        create-PC (immune-res)
+        create-PC (immune-res) ((rdrc != 0) and parent-DRC?)
          set antigen min (list 1 (antigen + q_antigen))
         ask neighbors [
           set antigen min (list 1 (antigen + q_antigen))
@@ -285,16 +266,42 @@ end
 
 ;;; ============ 2 QUIESCENT CELLS ================
 to rules-QC
+
+  let psi 1
+  let new_t_refs []
+  forEach t_refs [
+  t ->
+    if (t > ticks - tau) [
+      set new_t_refs (lput t new_t_refs)
+      set psi (psi * exp( -(c_QC) * (ticks - t) ) )
+    ]
+  ]
+  set t_refs new_t_refs
+
   ask patches with [state = 2]
   [
     ;; MODIFICATION: QC to PC if there is a HC in its neighborhood.
     ;; avoids no proliferation and empty holes in the tumor if p_0 is too low at the start.
-    if-else count neighbors with [state = 0] > 1 [create-PC immune-res]
-    [
-      let rpa random-init R_p (R_p * 0.1)      ; uniform random number between R_p and R_p + 10%R_p
-      let rna random-init R_n (- R_n * 0.1)    ; uniform random number between R_n and R_n - 10%R_n and R_n
-      if r >= rpa  [create-PC immune-res]      ; QC->PC if is is in PC zone
-      if R_t >= (R_max / 6.5) [                ; Distance from which QC become NC due to lack of nutrients
+
+    ifelse ((not empty? t_refs) and (not is-DRC?) and (n_dead = 0)) [
+        let Pd_ (table:get gamma state) * k_qc * psi
+        let rdeath (random-float 1)
+
+        ifelse (rdeath < Pd_) [
+          create-DC
+        ][
+          create-US
+        ]
+    ][
+      if ((not empty? t_refs)) [
+        set n_dead max (list (n_dead - 1) 0)
+      ]
+
+      if-else count neighbors with [state = 0] > 1 [create-PC immune-res false]
+      [
+        let rpa random-init R_p (R_p * 0.1)      ; uniform random number between R_p and R_p + 10%R_p
+        let rna random-init R_n (- R_n * 0.1)    ; uniform random number between R_n and R_n - 10%R_n and R_n
+        if r >= rpa  [create-PC immune-res is-DRC?]      ; QC->PC if is is in PC zone
         if r <=  rna [create-NC]                 ; QC->NC if it is in NC zone
       ]
     ]
@@ -306,8 +313,35 @@ end
 
 ;;; ============ 4 NK CELLS RULES ================
 to rules-NK
+  let psi 1
+  let new_t_refs []
+  forEach t_refs [
+  t ->
+    if (t > ticks - tau) [
+      set new_t_refs (lput t new_t_refs)
+      set psi (psi * exp( -(c_ic) * (ticks - t) ) )
+    ]
+  ]
+  set t_refs new_t_refs
+
   ask patches with [ state = 4 ] [
-    NK-action
+
+    ifelse ((not empty? t_refs) and (not is-DRC?) and (n_dead = 0)) [
+        let Pd_ (table:get gamma state) * k_ic * psi
+        let rdeath (random-float 1)
+
+        ifelse (rdeath < Pd_) [
+          create-DC
+        ][
+          create-US
+        ]
+    ][
+      if ((not empty? t_refs)) [
+        set n_dead max (list (n_dead - 1) 0)
+      ]
+
+      NK-action
+    ]
   ]
 end
 
@@ -390,7 +424,6 @@ to NK-confict-with-TC [tc]
     let D_tc ([immune-dam] of tc)
     let R_tc ([immune-res] of tc)
     let p-tc-die (1 - exp (1.4 * (R_tc - D_tc - NK-force)))
-    show p-tc-die
     let dice (random-float 1)
     ifelse (dice < p-tc-die) [
       ; If TC die then it turns to US state
@@ -421,8 +454,35 @@ end
 
 to rules-CTL
   ( ifelse (AIS-active? = 0) [
+
+  let psi 1
+  let new_t_refs []
+  forEach t_refs [
+  t ->
+    if (t > ticks - tau) [
+      set new_t_refs (lput t new_t_refs)
+      set psi (psi * exp( -(c_ic) * (ticks - t) ) )
+    ]
+  ]
+  set t_refs new_t_refs
+
     ask patches with [ state = 5 ] [
-      CTL-action
+
+      ifelse ((not empty? t_refs) and (not is-DRC?) and (n_dead = 0)) [
+        let Pd_ (table:get gamma state) * k_ic * psi
+        let rdeath (random-float 1)
+
+        ifelse (rdeath < Pd_) [
+          create-DC
+        ][
+          create-US
+        ]
+      ][
+        if ((not empty? t_refs)) [
+          set n_dead max (list (n_dead - 1) 0)
+        ]
+        CTL-action
+      ]
     ]
   ] (AIS-active? > 0) [
     set AIS-active? (AIS-active? - 1)
@@ -453,7 +513,7 @@ to CTL-action
       set antigen min (list 1 (antigen + 5 * q_antigen))
     ]
 
-    ;; conflict with TC if tumour
+    ;; conflict with TC
     CTL-confict-with-TC (one-of TCneigh)
 
   ]
@@ -516,6 +576,7 @@ to CTL-confict-with-TC [tc]
       ]
     ]
   ]
+  ;;
 end
 
 
@@ -537,43 +598,6 @@ to rules-DC
   ]
 end
 
-;;; PHARMACOLOGICAL ACTION
-to go-PA
-  ask patches with [state != 3 and not drug-res?][ ; Not NC and neither drug resistant
-    if (random-float 1 < death-probability) [
-      set state 7 ;; Enters into DS
-    ]
-  ]
-end
-
-to-report death-probability
-  ; Example: ask patch 0 0 [show death-probability]
-  ; Inside a "ask patches []" chunk
-  let gamma_i-selected item state gamma_i
-  let k_i-selected item state k_i
-  let c_i-selected item state c_i
-  let exit gamma_i-selected * k_i-selected * exp(- c_i-selected * (ticks - t_n))
-  report exit
-end
-
-to-report mean-death-prob
-  let tot 0
-  let n_tot 0
-  ask patches with [not drug-res?] [
-    set tot tot + death-probability
-    set n_tot n_tot + 1
-  ]
-  report precision (tot / n_tot) 2
-end
-
-; TODO: Check
-to-report p_D [i]
-  let exit -1
-  ask one-of patches with [state = i] [
-    set exit death-probability
-  ]
-  report precision exit 2
-end
 
 ;;; ============== UTILS ==================
 
@@ -583,9 +607,10 @@ to create-HC
   set tumor-cell? false
   set pcolor white
   set age 0
+  set is-DRC? false
 end
 
-to create-PC [ir]
+to create-PC [ir isdrc]
   set previous-state state
   set state 1
   set tumor-cell? true
@@ -593,14 +618,18 @@ to create-PC [ir]
   set limit random-init 1 10 ; random int between 1 and 10. TODO: Talk with the team about these values
   set pcolor red
   set immune-res ir
+  set n_dead (random 5)
+  set is-DRC? isdrc
 end
 
-to create-QC
+to create-QC [isdrc]
   set previous-state state
   set state 2
   set tumor-cell? true
-  set pcolor 17
+  set pcolor pink
   set age 0
+  set is-DRC? isdrc
+  set n_dead (random 5)
 end
 
 to create-NC
@@ -617,6 +646,8 @@ to create-NK
   set pcolor sky
   set age 0
   set tumor-cell? false
+  set n_dead (random 5)
+  set is-DRC? false
 end
 
 to create-CTL
@@ -627,6 +658,8 @@ to create-CTL
   set age 0
   set fights 0
   set tumor-cell? false
+  set n_dead (random 5)
+  set is-DRC? false
 end
 
 to create-US
@@ -635,7 +668,8 @@ to create-US
   set state 6
   set limit (random 5)
   set age 0
-  set pcolor 112
+  set pcolor 126
+  set n_dead (random 5)
 end
 
 to create-DC
@@ -644,7 +678,8 @@ to create-DC
   set state 7
   set limit 0
   set age 0
-  set pcolor 12
+  set pcolor 7
+  set is-DRC? false
 end
 
 
@@ -687,10 +722,6 @@ to-report random-init [m s]
  report m + random s
 end
 
-; Returns a random float between a and b
-to-report random-between [a b]
-  report a + random-float (b - a)
-end
 @#$#@#$#@
 GRAPHICS-WINDOW
 279
@@ -799,7 +830,7 @@ p_0
 p_0
 0
 1
-0.0
+0.7
 0.01
 1
 NIL
@@ -814,7 +845,7 @@ a_p
 a_p
 0
 0.99
-0.76
+0.6
 0.01
 1
 NIL
@@ -829,7 +860,7 @@ a_q
 a_q
 0
 1 - a_p
-0.01
+0.35
 0.01
 1
 NIL
@@ -960,7 +991,7 @@ q_antigen
 q_antigen
 0
 1
-0.04
+0.25
 0.01
 1
 NIL
@@ -992,7 +1023,7 @@ INPUTBOX
 264
 340
 IS-act-time
-15.0
+30.0
 1
 0
 Number
@@ -1023,7 +1054,7 @@ NK-threshold
 NK-threshold
 0
 0.30
-0.02
+0.05
 0.01
 1
 * ncell
@@ -1071,7 +1102,7 @@ diffusion-rate
 diffusion-rate
 0
 1
-0.92
+0.61
 0.01
 1
 NIL
@@ -1086,7 +1117,7 @@ evaporation-rate
 evaporation-rate
 0
 0.25
-0.25
+0.01
 0.01
 1
 NIL
@@ -1101,7 +1132,7 @@ NK-force
 NK-force
 0
 1
-0.21
+0.3
 0.01
 1
 NIL
@@ -1116,7 +1147,7 @@ CTL-force
 CTL-force
 0
 1
-0.36
+0.85
 0.01
 1
 NIL
@@ -1131,7 +1162,7 @@ TC-immune-gain
 TC-immune-gain
 0
 1
-0.12
+0.01
 0.01
 1
 NIL
@@ -1146,7 +1177,7 @@ TC-immune-damage-rate
 TC-immune-damage-rate
 0
 1
-0.29
+0.1
 0.01
 1
 NIL
@@ -1183,214 +1214,193 @@ PENS
 "CTL" 1.0 0 -8630108 true "" "plot count patches with [state = 5]"
 
 TEXTBOX
-288
-452
-515
-480
-PHARMACOLOGICAL ACTION SETTINGS
-11
+283
+453
+433
+471
+TREATMENT SETTINGS\n
+12
 0.0
 1
 
-SWITCH
+SLIDER
 286
+575
+422
+608
+c_PC
+c_PC
+0.5
+1
+0.605
+0.005
+1
+NIL
+HORIZONTAL
+
+INPUTBOX
+285
 474
-400
-507
-PA-active?
-PA-active?
+394
+534
+t_ap
+50.0
 1
-1
--1000
-
-SLIDER
-464
-471
-636
-504
-drug-res-prob
-drug-res-prob
 0
+Number
+
+INPUTBOX
+399
+474
+509
+534
+t_per
+5.0
 1
-0.57
-0.01
+0
+Number
+
+INPUTBOX
+512
+474
+608
+534
+tau
+20.0
 1
-NIL
-HORIZONTAL
+0
+Number
 
 SLIDER
 286
-511
-458
-544
+538
+422
+571
+gamma_PC
+gamma_PC
+0.55
+0.95
+0.64
+0.005
+1
+NIL
+HORIZONTAL
+
+SLIDER
+428
+539
+561
+572
+gamma_QC
+gamma_QC
+0
+0.4
+0.02
+0.005
+1
+NIL
+HORIZONTAL
+
+SLIDER
+565
+539
+694
+572
+gamma_IC
+gamma_IC
+0
+0.7
+0.505
+0.005
+1
+NIL
+HORIZONTAL
+
+INPUTBOX
+611
+475
+696
+535
 n_d
-n_d
-0
-100
-49.0
+20.0
 1
+0
+Number
+
+SLIDER
+286
+611
+423
+644
+k_pc
+k_pc
+0
+1
+0.805
+0.005
 1
 NIL
 HORIZONTAL
 
 SLIDER
-287
-547
-459
-580
-tau
-tau
-0
-100
-50.0
+428
+576
+561
+609
+c_qc
+c_qc
+0.5
 1
-1
-NIL
-HORIZONTAL
-
-SLIDER
-288
-582
-460
-615
-t_ap
-t_ap
-0
-100
-85.0
-1
+0.55
+0.005
 1
 NIL
 HORIZONTAL
 
 SLIDER
-290
-618
-462
-651
-t_per
-t_per
-0
-100
-50.0
+565
+577
+695
+610
+c_ic
+c_ic
+0.5
 1
+0.72
+0.005
 1
 NIL
 HORIZONTAL
 
 SLIDER
-290
-654
-462
-687
-t_ad
-t_ad
+429
+611
+561
+644
+k_qc
+k_qc
 0
-100
-50.0
 1
+0.4
+0.005
 1
 NIL
 HORIZONTAL
 
-MONITOR
-701
-543
-811
-588
+SLIDER
+565
+612
+695
+645
+k_ic
+k_ic
+0
+1
+0.6
+0.005
+1
 NIL
-mean-death-prob
-2
-1
-11
-
-MONITOR
-820
-543
-877
-588
-p_D(0)
-p_D 0
-2
-1
-11
-
-MONITOR
-884
-543
-941
-588
-p_D(1)
-p_D 1
-17
-1
-11
-
-MONITOR
-821
-594
-878
-639
-p_D(2)
-p_D 2
-17
-1
-11
-
-MONITOR
-885
-594
-942
-639
-p_D(3)
-p_D 3
-17
-1
-11
-
-MONITOR
-822
-646
-879
-691
-p_D(4)
-p_D 4
-17
-1
-11
-
-MONITOR
-887
-646
-944
-691
-p_D(5)
-p_D 5
-17
-1
-11
-
-MONITOR
-823
-697
-880
-742
-p_D(6)
-p_D 6
-17
-1
-11
-
-MONITOR
-888
-697
-945
-742
-p_D(7)
-p_D 7
-17
-1
-11
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -1734,7 +1744,7 @@ false
 Polygon -7500403 true true 270 75 225 30 30 225 75 270
 Polygon -7500403 true true 30 75 75 30 270 225 225 270
 @#$#@#$#@
-NetLogo 6.2.1
+NetLogo 6.2.2
 @#$#@#$#@
 @#$#@#$#@
 @#$#@#$#@
