@@ -109,6 +109,9 @@ to setup
 end
 
 to go
+  if ( (count patches with [state = 1 or state = 2]) = 0 ) [
+    stop
+  ]
   ;;; update global variables
   update-globals
 
@@ -862,7 +865,7 @@ a_q
 a_q
 0
 1 - a_p
-0.27
+0.26
 0.01
 1
 NIL
@@ -1025,7 +1028,7 @@ INPUTBOX
 264
 340
 IS-act-time
-30.0
+20.0
 1
 0
 Number
@@ -1056,7 +1059,7 @@ NK-threshold
 NK-threshold
 0
 0.30
-0.05
+0.03
 0.01
 1
 * ncell
@@ -1179,7 +1182,7 @@ TC-immune-damage-rate
 TC-immune-damage-rate
 0
 1
-0.1
+0.21
 0.01
 1
 NIL
@@ -1191,7 +1194,7 @@ INPUTBOX
 265
 723
 IS-recruitment-factor
-1.0
+2.0
 1
 0
 Number
@@ -1246,7 +1249,7 @@ INPUTBOX
 394
 534
 t_ap
-50.0
+60.0
 1
 0
 Number
@@ -1257,7 +1260,7 @@ INPUTBOX
 509
 534
 t_per
-5.0
+15.0
 1
 0
 Number
@@ -1324,7 +1327,7 @@ INPUTBOX
 696
 535
 n_d
-20.0
+0.0
 1
 0
 Number
@@ -1383,7 +1386,7 @@ k_qc
 k_qc
 0
 1
-0.4
+0.41
 0.005
 1
 NIL
