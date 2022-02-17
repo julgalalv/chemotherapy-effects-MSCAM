@@ -33,6 +33,11 @@ globals[
  n_cur ;; a counter that reflects the number of chemotherapy cycles has been applied
  t_refs ;; relevant treatment application time references
  gamma ;; table or reals that modelates the adquired drug resistance
+
+  PC_therapy_dead ;; Counter of killed PC by therapy
+  QC_therapy_dead ;; Counter of killed PC by therapy
+  NK_therapy_dead ;; Counter of killed PC by therapy
+  CTL_therapy_dead ;; Counter of killed PC by therapy
 ]
 
 ;; ========== CUSTOM PATCHES ==============
@@ -105,6 +110,14 @@ to setup
   table:put gamma 2 gamma_QC
   table:put gamma 4 gamma_IC
   table:put gamma 5 gamma_IC
+
+
+  ;; INITIALIZE THERAPY DEAD COUNTERS
+
+  set PC_therapy_dead 0
+  set QC_therapy_dead 0
+  set NK_therapy_dead 0
+  set CTL_therapy_dead 0
   reset-ticks
 end
 
@@ -213,6 +226,7 @@ to rules-PC
 
         ifelse (rdeath < Pd_) [
           create-DC
+          set PC_therapy_dead (PC_therapy_dead + 1)
         ][
           create-US
         ]
@@ -241,14 +255,16 @@ to divide-in-W_p
     ; If exists at least 1 HC in neighbourhood
     if count W_p-neighbors > 0 [
       let rdrc (random 1)
+      let symd (random-float 1)
       ; it proliferates and invades HC
       set divided true
       let parent-DRC? is-DRC?
-      create-PC immune-res ((rdrc = 0) and parent-DRC?)
+
+      create-PC immune-res (((rdrc = 0) or (symd >= 0.9))and parent-DRC?)
 
       ; it liberates an small amount of antigen
       ask one-of W_p-neighbors [
-        create-PC (immune-res) ((rdrc != 0) and parent-DRC?)
+        create-PC (immune-res) (((rdrc != 0) or (symd >= 0.9)) and parent-DRC?)
          set antigen min (list 1 (antigen + q_antigen))
         ask neighbors [
           set antigen min (list 1 (antigen + q_antigen))
@@ -295,6 +311,7 @@ to rules-QC
 
         ifelse (rdeath < Pd_) [
           create-DC
+          set QC_therapy_dead (QC_therapy_dead + 1)
         ][
           create-US
         ]
@@ -338,6 +355,7 @@ to rules-NK
 
         ifelse (rdeath < Pd_) [
           create-DC
+          set NK_therapy_dead (NK_therapy_dead + 1)
         ][
           create-US
         ]
@@ -480,6 +498,7 @@ to rules-CTL
 
         ifelse (rdeath < Pd_) [
           create-DC
+          set CTL_therapy_dead (CTL_therapy_dead + 1)
         ][
           create-US
         ]
@@ -685,7 +704,6 @@ to create-DC
   set limit 0
   set age 0
   set pcolor 7
-  set is-DRC? false
 end
 
 
@@ -696,7 +714,8 @@ end
 
 to check-IS
   let num-NK (count patches with [state = 4])
-  let NK-lack max (list 0 (NK-threshold * num-patches - num-NK))
+  let num-TC (count patches with [tumor-cell?])
+  let NK-lack max (list 0 (NK-threshold * (num-patches - num-TC) - num-NK))
 
   if (NK-lack != 0) [
     ask ( n-of NK-lack (patches with [state = 0]) ) [
@@ -749,8 +768,8 @@ GRAPHICS-WINDOW
 100
 -100
 100
-0
-0
+1
+1
 1
 ticks
 30.0
@@ -1059,7 +1078,7 @@ NK-threshold
 NK-threshold
 0
 0.30
-0.03
+0.02
 0.01
 1
 * ncell
@@ -1093,7 +1112,7 @@ INPUTBOX
 265
 514
 fights-factor
-0.6
+0.4
 1
 0
 Number
@@ -1137,7 +1156,7 @@ NK-force
 NK-force
 0
 1
-0.3
+0.35
 0.01
 1
 NIL
@@ -1152,7 +1171,7 @@ CTL-force
 CTL-force
 0
 1
-0.85
+0.8
 0.01
 1
 NIL
@@ -1166,9 +1185,9 @@ SLIDER
 TC-immune-gain
 TC-immune-gain
 0
-1
-0.01
-0.01
+0.1
+0.004
+0.002
 1
 NIL
 HORIZONTAL
@@ -1182,7 +1201,7 @@ TC-immune-damage-rate
 TC-immune-damage-rate
 0
 1
-0.21
+0.3
 0.01
 1
 NIL
@@ -1194,7 +1213,7 @@ INPUTBOX
 265
 723
 IS-recruitment-factor
-2.0
+4.0
 1
 0
 Number
@@ -1237,7 +1256,7 @@ c_PC
 c_PC
 0.5
 1
-0.605
+0.715
 0.005
 1
 NIL
@@ -1249,7 +1268,7 @@ INPUTBOX
 394
 534
 t_ap
-60.0
+40.0
 1
 0
 Number
@@ -1285,7 +1304,7 @@ gamma_PC
 gamma_PC
 0.55
 0.95
-0.715
+0.785
 0.005
 1
 NIL
@@ -1300,7 +1319,7 @@ gamma_QC
 gamma_QC
 0
 0.4
-0.02
+0.205
 0.005
 1
 NIL
@@ -1315,7 +1334,7 @@ gamma_IC
 gamma_IC
 0
 0.7
-0.505
+0.52
 0.005
 1
 NIL
@@ -1327,7 +1346,7 @@ INPUTBOX
 696
 535
 n_d
-0.0
+20.0
 1
 0
 Number
@@ -1341,7 +1360,7 @@ k_pc
 k_pc
 0
 1
-0.805
+0.9
 0.005
 1
 NIL
@@ -1371,7 +1390,7 @@ c_ic
 c_ic
 0.5
 1
-0.72
+0.715
 0.005
 1
 NIL
@@ -1401,11 +1420,43 @@ k_ic
 k_ic
 0
 1
-0.6
+0.425
 0.005
 1
 NIL
 HORIZONTAL
+
+PLOT
+908
+383
+1186
+533
+CELL DEADTH BY TH
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+true
+"" ""
+PENS
+"PC" 1.0 0 -2674135 true "" "plot PC_therapy_dead"
+"QC" 1.0 0 -2064490 true "" "plot QC_therapy_dead"
+"NK" 1.0 0 -13791810 true "" "plot NK_therapy_dead"
+"CTL" 1.0 0 -10141563 true "" "plot CTL_therapy_dead"
+
+MONITOR
+1189
+383
+1251
+428
+DRC TC
+count patches with [(state = 1 or state = 2) and is-DRC?]
+17
+1
+11
 
 @#$#@#$#@
 ## WHAT IS IT?
